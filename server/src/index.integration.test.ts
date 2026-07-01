@@ -1081,6 +1081,35 @@ describe('remote multiplayer server integration', () => {
     }
   })
 
+  it('deletes room when the final player leaves explicitly', async () => {
+    const host = await connectClient()
+
+    try {
+      const createAck = requireOkAck(await emitAck<SocketAck>(host, 'create-room', { playerName: 'Host' }))
+
+      host.emit('leave-room')
+
+      const joinClient = await connectClient()
+      try {
+        const joinAck = await emitAck<SocketAck>(joinClient, 'join-room', {
+          roomCode: createAck.room.roomCode,
+          playerName: 'Replacement Host'
+        })
+
+        expect(joinAck.ok).toBe(false)
+        if (joinAck.ok) {
+          return
+        }
+
+        expect(joinAck.error).toBe('Room not found.')
+      } finally {
+        joinClient.disconnect()
+      }
+    } finally {
+      host.disconnect()
+    }
+  })
+
   it('transfers host in-game when the host disconnects', async () => {
     const setup = await setupTwoPlayerRoom()
     try {
