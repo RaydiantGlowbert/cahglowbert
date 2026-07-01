@@ -347,7 +347,8 @@ io.on('connection', (socket) => {
         return
       }
 
-      if (room.players.size >= MAX_PLAYERS) {
+      const connectedPlayersCount = [...room.players.values()].filter((player) => player.connected).length
+      if (connectedPlayersCount >= MAX_PLAYERS) {
         callback({ ok: false, error: 'Room is full.' })
         return
       }

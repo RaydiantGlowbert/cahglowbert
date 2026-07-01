@@ -417,6 +417,53 @@ describe('remote multiplayer server integration', () => {
     }
   })
 
+  it('allows joining when a previously connected player disconnects from a full room', async () => {
+    const sockets: Socket[] = []
+
+    try {
+      const host = await connectClient()
+      sockets.push(host)
+
+      const createAck = requireOkAck(await emitAck<SocketAck>(host, 'create-room', { playerName: 'Host' }))
+
+      const playersByName = new Map<string, Socket>()
+
+      for (let index = 0; index < 14; index += 1) {
+        const player = await connectClient()
+        sockets.push(player)
+
+        const name = `Player ${index + 1}`
+        const joinAck = await emitAck<SocketAck>(player, 'join-room', {
+          roomCode: createAck.room.roomCode,
+          playerName: name
+        })
+
+        expect(joinAck.ok).toBe(true)
+        playersByName.set(name, player)
+      }
+
+      const disconnectedSeenByHost = waitForRoomUpdated(host, (room) => {
+        const disconnectedPlayer = room.players.find((player) => player.name === 'Player 1')
+        return Boolean(disconnectedPlayer && !disconnectedPlayer.connected)
+      })
+
+      playersByName.get('Player 1')?.disconnect()
+      await disconnectedSeenByHost
+
+      const replacement = await connectClient()
+      sockets.push(replacement)
+
+      const replacementJoinAck = await emitAck<SocketAck>(replacement, 'join-room', {
+        roomCode: createAck.room.roomCode,
+        playerName: 'Replacement Player'
+      })
+
+      expect(replacementJoinAck.ok).toBe(true)
+    } finally {
+      disconnectSockets(...sockets)
+    }
+  })
+
   it('rejects case-insensitive duplicate player names for connected players', async () => {
     const sockets: Socket[] = []
 
