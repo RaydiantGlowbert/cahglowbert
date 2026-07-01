@@ -19,6 +19,9 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
   const [isConnected, setIsConnected] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [liveMessage, setLiveMessage] = useState('')
+  const [pendingAction, setPendingAction] = useState<
+    'create' | 'join' | 'start' | 'submit' | 'choose' | 'advance' | null
+  >(null)
   const [createName, setCreateName] = useState('')
   const [joinName, setJoinName] = useState('')
   const [roomCodeInput, setRoomCodeInput] = useState('')
@@ -122,6 +125,7 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
 
     nextSocket.on('disconnect', () => {
       setIsConnected(false)
+      setPendingAction(null)
     })
 
     nextSocket.on('room-updated', (room: RoomSnapshot) => {
@@ -159,6 +163,12 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
   const canAdvanceRound = Boolean(playerInRoom?.isHost)
   const connectedPlayersCount = currentRoom?.players.filter((player) => player.connected).length ?? 0
   const disconnectedPlayersCount = currentRoom?.players.filter((player) => !player.connected).length ?? 0
+  const isCreating = pendingAction === 'create'
+  const isJoining = pendingAction === 'join'
+  const isStarting = pendingAction === 'start'
+  const isSubmitting = pendingAction === 'submit'
+  const isChoosing = pendingAction === 'choose'
+  const isAdvancing = pendingAction === 'advance'
   const shouldShowRecoveryHint =
     errorMessage === 'This session was replaced by a newer connection. Rejoin from this device.' ||
     errorMessage === 'Saved session expired. Rejoin with room code and player name.'
@@ -194,12 +204,15 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
   }, [errorMessage])
 
   const createRoom = () => {
-    if (!socket) {
+    if (!socket || pendingAction) {
       return
     }
 
+    setPendingAction('create')
     setErrorMessage(null)
     socket.emit('create-room', { playerName: createName }, (ack: SocketAck) => {
+      setPendingAction(null)
+
       if (!ack.ok) {
         handleActionError(ack.error)
         return
@@ -216,10 +229,11 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
   }
 
   const joinRoom = () => {
-    if (!socket) {
+    if (!socket || pendingAction) {
       return
     }
 
+    setPendingAction('join')
     setErrorMessage(null)
     socket.emit(
       'join-room',
@@ -228,6 +242,8 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
         playerName: joinName
       },
       (ack: SocketAck) => {
+        setPendingAction(null)
+
         if (!ack.ok) {
           handleActionError(ack.error)
           return
@@ -253,11 +269,14 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
   }
 
   const startGame = () => {
-    if (!socket) {
+    if (!socket || pendingAction) {
       return
     }
 
+    setPendingAction('start')
     socket.emit('start-game', (ack: SocketAck) => {
+      setPendingAction(null)
+
       if (!ack.ok) {
         handleActionError(ack.error)
         return
@@ -268,11 +287,14 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
   }
 
   const submitAnswer = () => {
-    if (!socket || selectedCardIds.length !== requiredPick) {
+    if (!socket || selectedCardIds.length !== requiredPick || pendingAction) {
       return
     }
 
+    setPendingAction('submit')
     socket.emit('submit-answer', { cardIds: selectedCardIds }, (ack: { ok: boolean; error?: string }) => {
+      setPendingAction(null)
+
       if (!ack.ok) {
         handleActionError(ack.error, 'Could not submit answer.')
         return
@@ -283,11 +305,14 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
   }
 
   const chooseWinner = (winnerId: string) => {
-    if (!socket) {
+    if (!socket || pendingAction) {
       return
     }
 
+    setPendingAction('choose')
     socket.emit('choose-winner', { winnerId }, (ack: { ok: boolean; error?: string }) => {
+      setPendingAction(null)
+
       if (!ack.ok) {
         handleActionError(ack.error, 'Could not choose winner.')
       }
@@ -295,11 +320,14 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
   }
 
   const advanceRound = () => {
-    if (!socket) {
+    if (!socket || pendingAction) {
       return
     }
 
+    setPendingAction('advance')
     socket.emit('next-round', (ack: { ok: boolean; error?: string }) => {
+      setPendingAction(null)
+
       if (!ack.ok) {
         handleActionError(ack.error, 'Could not advance round.')
       }
@@ -375,8 +403,13 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
                 placeholder="Host name"
               />
             </label>
-            <button type="button" className="primary-action" onClick={createRoom} disabled={!isConnected}>
-              Create room
+            <button
+              type="button"
+              className="primary-action"
+              onClick={createRoom}
+              disabled={!isConnected || isCreating || Boolean(pendingAction && !isCreating)}
+            >
+              {isCreating ? 'Creating...' : 'Create room'}
             </button>
           </div>
 
@@ -401,8 +434,13 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
                 placeholder="Player name"
               />
             </label>
-            <button type="button" className="primary-action" onClick={joinRoom} disabled={!isConnected}>
-              Join room
+            <button
+              type="button"
+              className="primary-action"
+              onClick={joinRoom}
+              disabled={!isConnected || isJoining || Boolean(pendingAction && !isJoining)}
+            >
+              {isJoining ? 'Joining...' : 'Join room'}
             </button>
           </div>
         </div>
@@ -426,8 +464,13 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
             <>
               <div className="action-row">
                 {playerInRoom?.isHost ? (
-                  <button type="button" className="primary-action" onClick={startGame}>
-                    Start remote game
+                  <button
+                    type="button"
+                    className="primary-action"
+                    onClick={startGame}
+                    disabled={isStarting || Boolean(pendingAction && !isStarting)}
+                  >
+                    {isStarting ? 'Starting...' : 'Start remote game'}
                   </button>
                 ) : null}
                 <button type="button" className="secondary-action" onClick={leaveRoom}>
@@ -494,9 +537,9 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
                         type="button"
                         className="primary-action"
                         onClick={submitAnswer}
-                        disabled={selectedCardIds.length !== requiredPick}
+                        disabled={selectedCardIds.length !== requiredPick || isSubmitting || Boolean(pendingAction && !isSubmitting)}
                       >
-                        Submit {requiredPick} card{requiredPick > 1 ? 's' : ''}
+                        {isSubmitting ? 'Submitting...' : `Submit ${requiredPick} card${requiredPick > 1 ? 's' : ''}`}
                       </button>
                     </>
                   ) : (
@@ -516,7 +559,7 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
                         type="button"
                         className="answer-card"
                         onClick={() => chooseWinner(entry.playerId)}
-                        disabled={!isJudge}
+                        disabled={!isJudge || isChoosing || Boolean(pendingAction && !isChoosing)}
                         title={isJudge ? `Pick Submission ${index + 1} as winner` : 'Only the judge can pick a winner'}
                         aria-label={`Submission ${index + 1}${isJudge ? ', pick as winner' : ', waiting for judge'}`}
                       >
@@ -536,10 +579,14 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
                     type="button"
                     className="primary-action"
                     onClick={advanceRound}
-                    disabled={!canAdvanceRound}
+                    disabled={!canAdvanceRound || isAdvancing || Boolean(pendingAction && !isAdvancing)}
                     title={canAdvanceRound ? 'Advance to the next round' : 'Only the host can advance rounds'}
                   >
-                    {gameState.round >= gameState.maxRounds ? 'Finish game' : 'Next round'}
+                    {isAdvancing
+                      ? 'Advancing...'
+                      : gameState.round >= gameState.maxRounds
+                        ? 'Finish game'
+                        : 'Next round'}
                   </button>
                   {!canAdvanceRound ? <p className="setup-warning">Waiting for host to advance the round.</p> : null}
                 </div>

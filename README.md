@@ -99,6 +99,12 @@ Set server env in your backend host:
 - M5: Anonymous judging with alias-only winner selection
 - M6: Session hardening, host controls, and lifecycle edge-case coverage
 
+## Remote UX Action States
+
+- Action buttons show in-progress labels during server acknowledgements (`Creating...`, `Joining...`, `Starting...`, `Submitting...`, `Advancing...`).
+- While one remote action is pending, other mutating actions are temporarily disabled to prevent duplicate submissions and racey double-clicks.
+- On disconnect, pending action state is cleared so controls recover cleanly after reconnect.
+
 ## Remote Multiplayer QA Checklist
 
 Use this checklist before releases to validate failure/recovery paths:
