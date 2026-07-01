@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 import {
+  LARGE_TABLE_THRESHOLD,
+  MAX_PLAYERS,
   chooseWinner,
   createInitialGameState,
   nextRound,
@@ -10,9 +12,20 @@ import {
 import { clearPersistedState, loadPersistedState, savePersistedState } from './persistence'
 
 function App() {
+  const JUDGE_PAGE_SIZE = 6
   const [playerNamesInput, setPlayerNamesInput] = useState('Ada, Grace')
   const [gameState, setGameState] = useState<GameState | null>(null)
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([])
+  const [judgePage, setJudgePage] = useState(1)
+
+  const parsedSetupNames = useMemo(
+    () =>
+      playerNamesInput
+        .split(',')
+        .map((name) => name.trim())
+        .filter(Boolean),
+    [playerNamesInput]
+  )
 
   useEffect(() => {
     const persisted = loadPersistedState()
@@ -34,6 +47,10 @@ function App() {
     savePersistedState(gameState, playerNamesInput)
   }, [gameState, playerNamesInput])
 
+  useEffect(() => {
+    setJudgePage(1)
+  }, [gameState?.phase, gameState?.round])
+
   const activePlayerId = useMemo(() => {
     if (!gameState) {
       return null
@@ -51,16 +68,30 @@ function App() {
   }, [activePlayerId, gameState])
 
   const requiredPick = useMemo(() => gameState?.blackCard?.pick ?? 1, [gameState])
+  const judgePageCount = useMemo(() => {
+    if (!gameState || gameState.phase !== 'waiting-for-judge') {
+      return 1
+    }
+
+    return Math.max(1, Math.ceil(gameState.submittedAnswers.length / JUDGE_PAGE_SIZE))
+  }, [gameState])
+
+  const visibleSubmittedAnswers = useMemo(() => {
+    if (!gameState || gameState.phase !== 'waiting-for-judge') {
+      return []
+    }
+
+    const start = (judgePage - 1) * JUDGE_PAGE_SIZE
+    return gameState.submittedAnswers.slice(start, start + JUDGE_PAGE_SIZE)
+  }, [gameState, judgePage])
 
   const startGame = () => {
-    const names = playerNamesInput
-      .split(',')
-      .map((name) => name.trim())
-      .filter(Boolean)
+    const names = parsedSetupNames
 
     const nextState = createInitialGameState(names.length >= 2 ? names : ['Player 1', 'Player 2'])
     setGameState(nextState)
     setSelectedCardIds([])
+    setJudgePage(1)
   }
 
   const handleAnswerSubmit = () => {
@@ -144,6 +175,12 @@ function App() {
                   placeholder="Ada, Grace, Linus"
                 />
               </label>
+              {parsedSetupNames.length >= LARGE_TABLE_THRESHOLD ? (
+                <p className="setup-warning">Large table mode will auto-enable: 5-card hands, 3 rounds.</p>
+              ) : null}
+              {parsedSetupNames.length > MAX_PLAYERS ? (
+                <p className="setup-warning">Only the first {MAX_PLAYERS} players will be used.</p>
+              ) : null}
               <button type="button" className="primary-action" onClick={startGame}>
                 Start game
               </button>
@@ -172,6 +209,11 @@ function App() {
                 <div className="status-pill">
                   Your hand: <strong>{activePlayer?.hand.length ?? 0} cards</strong>
                 </div>
+                {gameState.largeTableMode ? (
+                  <div className="status-pill">
+                    Mode: <strong>Large table</strong>
+                  </div>
+                ) : null}
               </div>
 
               <div className="table-body">
@@ -260,7 +302,7 @@ function App() {
                 <p>Choose the funniest answer from the table.</p>
               </div>
               <div className="answer-grid">
-                {gameState.submittedAnswers.map((entry) => {
+                {visibleSubmittedAnswers.map((entry) => {
                   const speaker = gameState.players.find((player) => player.id === entry.playerId)
                   return (
                     <button
@@ -275,6 +317,27 @@ function App() {
                   )
                 })}
               </div>
+              {judgePageCount > 1 ? (
+                <div className="judge-pagination">
+                  <button
+                    type="button"
+                    className="secondary-action"
+                    onClick={() => setJudgePage((page) => Math.max(1, page - 1))}
+                    disabled={judgePage === 1}
+                  >
+                    Previous
+                  </button>
+                  <span>Page {judgePage} of {judgePageCount}</span>
+                  <button
+                    type="button"
+                    className="secondary-action"
+                    onClick={() => setJudgePage((page) => Math.min(judgePageCount, page + 1))}
+                    disabled={judgePage === judgePageCount}
+                  >
+                    Next
+                  </button>
+                </div>
+              ) : null}
             </section>
           ) : null}
 

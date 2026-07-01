@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { blackCards } from './cards/blackCards'
 import { whiteCards } from './cards/whiteCards'
 import {
+  MAX_PLAYERS,
   chooseWinner,
   createInitialGameState,
   nextRound,
@@ -109,5 +110,22 @@ describe('game flow', () => {
 
     expect(nextState.phase).toBe('game-over')
     expect(nextState.round).toBe(5)
+  })
+
+  it('enables quick mode for large tables', () => {
+    const names = Array.from({ length: 9 }, (_, index) => `Player ${index + 1}`)
+    const state = createInitialGameState(names)
+
+    expect(state.largeTableMode).toBe(true)
+    expect(state.maxRounds).toBe(3)
+    expect(state.handSize).toBe(5)
+    expect(state.players[0]?.hand).toHaveLength(5)
+  })
+
+  it('caps player count at the maximum supported table size', () => {
+    const names = Array.from({ length: MAX_PLAYERS + 3 }, (_, index) => `Player ${index + 1}`)
+    const state = createInitialGameState(names)
+
+    expect(state.players).toHaveLength(MAX_PLAYERS)
   })
 })

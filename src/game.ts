@@ -23,6 +23,13 @@ export type RoundHistoryEntry = {
   winnerName: string
 }
 
+export const MAX_PLAYERS = 15
+export const LARGE_TABLE_THRESHOLD = 9
+const DEFAULT_HAND_SIZE = 7
+const QUICK_MODE_HAND_SIZE = 5
+const DEFAULT_MAX_ROUNDS = 5
+const QUICK_MODE_MAX_ROUNDS = 3
+
 export type GameState = {
   players: Player[]
   judgeIndex: number
@@ -33,6 +40,9 @@ export type GameState = {
   winnerId: string | null
   answeringPlayerId: string | null
   roundHistory: RoundHistoryEntry[]
+  handSize: number
+  maxRounds: number
+  largeTableMode: boolean
 }
 
 export const initialBlackCards: Card[] = blackCards
@@ -83,7 +93,7 @@ function getNextAnsweringPlayerId(
   return nonJudgePlayerIds[(currentIndex + 1) % nonJudgePlayerIds.length] ?? null
 }
 
-export function dealHands(players: Player[], deck: Card[]): Player[] {
+export function dealHands(players: Player[], deck: Card[], handSize = DEFAULT_HAND_SIZE): Player[] {
   const deckPool = shuffleCards(deck)
   const dealtPlayers: Player[] = players.map((player) => ({ ...player, hand: [] as Card[] }))
 
@@ -95,7 +105,7 @@ export function dealHands(players: Player[], deck: Card[]): Player[] {
     return deckPool.shift()
   }
 
-  for (let i = 0; i < 7; i += 1) {
+  for (let i = 0; i < handSize; i += 1) {
     for (const player of dealtPlayers) {
       const nextCard = drawCard()
       if (nextCard) {
@@ -108,7 +118,11 @@ export function dealHands(players: Player[], deck: Card[]): Player[] {
 }
 
 export function createInitialGameState(names: string[]): GameState {
-  const players = dealHands(createPlayers(names), initialWhiteCards)
+  const cappedNames = names.slice(0, MAX_PLAYERS)
+  const largeTableMode = cappedNames.length >= LARGE_TABLE_THRESHOLD
+  const handSize = largeTableMode ? QUICK_MODE_HAND_SIZE : DEFAULT_HAND_SIZE
+  const maxRounds = largeTableMode ? QUICK_MODE_MAX_ROUNDS : DEFAULT_MAX_ROUNDS
+  const players = dealHands(createPlayers(cappedNames), initialWhiteCards, handSize)
   const judgeIndex = 0
   return {
     players,
@@ -119,7 +133,10 @@ export function createInitialGameState(names: string[]): GameState {
     submittedAnswers: [],
     winnerId: null,
     answeringPlayerId: getNextAnsweringPlayerId(players, judgeIndex, null),
-    roundHistory: []
+    roundHistory: [],
+    handSize,
+    maxRounds,
+    largeTableMode
   }
 }
 
@@ -200,21 +217,24 @@ export function chooseWinner(state: GameState, winnerId: string): GameState {
 
 export function nextRound(state: GameState): GameState {
   const nextRoundNumber = state.round + 1
+  const nextJudgeIndex = (state.judgeIndex + 1) % state.players.length
+  const nextBlackCard = initialBlackCards[(nextRoundNumber - 1) % initialBlackCards.length] ?? initialBlackCards[0]
 
-  if (nextRoundNumber > 5) {
+  if (nextRoundNumber > state.maxRounds) {
     return {
       ...state,
       phase: 'game-over',
       submittedAnswers: [],
-      answeringPlayerId: null
+      answeringPlayerId: null,
+      winnerId: null
     }
   }
 
-  if (nextRoundNumber === 5) {
+  if (nextRoundNumber >= state.maxRounds) {
     return {
       ...state,
-      judgeIndex: (state.judgeIndex + 1) % state.players.length,
-      blackCard: initialBlackCards[(nextRoundNumber - 1) % initialBlackCards.length] ?? initialBlackCards[0],
+      judgeIndex: nextJudgeIndex,
+      blackCard: nextBlackCard,
       round: nextRoundNumber,
       phase: 'game-over',
       submittedAnswers: [],
@@ -222,9 +242,6 @@ export function nextRound(state: GameState): GameState {
       answeringPlayerId: null
     }
   }
-
-  const nextJudgeIndex = (state.judgeIndex + 1) % state.players.length
-  const nextBlackCard = initialBlackCards[(nextRoundNumber - 1) % initialBlackCards.length] ?? initialBlackCards[0]
 
   return {
     ...state,

@@ -36,7 +36,10 @@ export function loadPersistedState(): PersistedState {
       ...parsed,
       gameState: {
         ...gameState,
-        roundHistory: Array.isArray(gameState.roundHistory) ? gameState.roundHistory : []
+        roundHistory: Array.isArray(gameState.roundHistory) ? gameState.roundHistory : [],
+        handSize: gameState.handSize ?? 7,
+        maxRounds: gameState.maxRounds ?? 5,
+        largeTableMode: gameState.largeTableMode ?? gameState.players.length >= 9
       },
       playerNamesInput: parsed.playerNamesInput ?? ''
     }
