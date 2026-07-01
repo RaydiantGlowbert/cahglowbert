@@ -26,6 +26,12 @@ npm install
 2. Copy env file:
 
 ```bash
+copy .env.example .env
+```
+
+If you are on macOS/Linux, use:
+
+```bash
 cp .env.example .env
 ```
 
@@ -38,6 +44,13 @@ npm run dev:all
 4. Open frontend:
 
 - http://localhost:5173
+
+5. Optional release check commands:
+
+```bash
+npm run test -- --run
+npm run build
+```
 
 ## Scripts
 
@@ -83,12 +96,36 @@ Set frontend env in Vercel:
 
 - `VITE_SERVER_URL=https://your-server-domain`
 
+Vercel project settings for this repo:
+
+- Framework preset: `Vite`
+- Install command: `npm install`
+- Build command: `npm run build`
+- Output directory: `dist`
+
+`vercel.json` is included to keep deployment settings and SPA rewrites consistent.
+
 Set server env in your backend host:
 
 - `PORT=3001` (or platform-assigned)
 - `CORS_ORIGIN=https://your-frontend-domain`
 - `ROOM_STORE=redis`
 - `REDIS_URL=redis://...`
+
+## How To Play (MVP)
+
+1. Host creates a room in `Remote` mode and shares the room code.
+2. Other players join with the room code and their names.
+3. Host starts the game when everyone is ready.
+4. Active player submits cards when prompted.
+5. Judge picks a winning anonymized submission.
+6. Host advances to the next round until game over.
+
+For local-only sessions, use `Local` mode and enter player names on one device.
+
+## Known Limitations
+
+Current MVP constraints are tracked in `KNOWN_LIMITATIONS.md`.
 
 ## Current Multiplayer Milestones
 
