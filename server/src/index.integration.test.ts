@@ -1054,6 +1054,34 @@ describe('remote multiplayer server integration', () => {
     }
   })
 
+  it('allows valid session rejoin while game is already in progress', async () => {
+    const setup = await setupTwoPlayerRoom()
+
+    try {
+      setup.guest.disconnect()
+
+      const rejoinClient = await connectClient()
+      try {
+        const rejoinAck = await emitAck<SocketAck>(rejoinClient, 'rejoin-room', {
+          roomCode: setup.createAck.room.roomCode,
+          sessionToken: setup.joinAck.sessionToken
+        })
+
+        expect(rejoinAck.ok).toBe(true)
+        if (!rejoinAck.ok) {
+          return
+        }
+
+        expect(rejoinAck.room.phase).toBe('in-game')
+        expect(rejoinAck.playerId).toBe(setup.joinAck.playerId)
+      } finally {
+        rejoinClient.disconnect()
+      }
+    } finally {
+      disconnectSockets(setup.host, setup.guest)
+    }
+  })
+
   it('rejects choose-winner when round is not in judge phase', async () => {
     const setup = await setupTwoPlayerRoom()
     try {
