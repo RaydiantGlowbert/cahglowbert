@@ -5,6 +5,7 @@ import {
   MAX_PLAYERS,
   chooseWinner,
   createInitialGameState,
+  deckValidation,
   nextRound,
   submitAnswer,
   type GameState
@@ -22,6 +23,8 @@ function App() {
   const [shortlistMode, setShortlistMode] = useState(false)
   const [shortlistedPlayerIds, setShortlistedPlayerIds] = useState<string[]>([])
   const [shortlistLocked, setShortlistLocked] = useState(false)
+  const deckErrors = deckValidation.errors
+  const hasDeckErrors = !deckValidation.isValid
 
   const parsedSetupNames = useMemo(
     () =>
@@ -33,6 +36,11 @@ function App() {
   )
 
   useEffect(() => {
+    if (hasDeckErrors) {
+      setGameState(null)
+      return
+    }
+
     const persisted = loadPersistedState()
     if (persisted.gameState) {
       setGameState(persisted.gameState)
@@ -41,7 +49,7 @@ function App() {
     if (persisted.playerNamesInput) {
       setPlayerNamesInput(persisted.playerNamesInput)
     }
-  }, [])
+  }, [hasDeckErrors])
 
   useEffect(() => {
     if (!gameState) {
@@ -108,6 +116,10 @@ function App() {
   }, [gameState, judgePage, shortlistLocked, shortlistMode, shortlistedPlayerIds])
 
   const startGame = () => {
+    if (hasDeckErrors) {
+      return
+    }
+
     const names = parsedSetupNames
 
     const nextState = createInitialGameState(names.length >= 2 ? names : ['Player 1', 'Player 2'])
@@ -228,7 +240,17 @@ function App() {
               {parsedSetupNames.length > MAX_PLAYERS ? (
                 <p className="setup-warning">Only the first {MAX_PLAYERS} players will be used.</p>
               ) : null}
-              <button type="button" className="primary-action" onClick={startGame}>
+              {hasDeckErrors ? (
+                <div className="setup-error-box">
+                  <p>The card deck is invalid. Fix these issues before starting:</p>
+                  <ul>
+                    {deckErrors.map((error) => (
+                      <li key={error}>{error}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              <button type="button" className="primary-action" onClick={startGame} disabled={hasDeckErrors}>
                 Start game
               </button>
             </div>

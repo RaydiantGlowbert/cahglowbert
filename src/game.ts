@@ -23,6 +23,11 @@ export type RoundHistoryEntry = {
   winnerName: string
 }
 
+export type DeckValidationResult = {
+  isValid: boolean
+  errors: string[]
+}
+
 export const MAX_PLAYERS = 15
 export const LARGE_TABLE_THRESHOLD = 9
 const DEFAULT_HAND_SIZE = 7
@@ -47,6 +52,84 @@ export type GameState = {
 
 export const initialBlackCards: Card[] = blackCards
 export const initialWhiteCards: Card[] = whiteCards
+
+function collectDuplicateIds(cards: Card[]): string[] {
+  const seen = new Set<string>()
+  const duplicates = new Set<string>()
+
+  for (const card of cards) {
+    if (seen.has(card.id)) {
+      duplicates.add(card.id)
+      continue
+    }
+
+    seen.add(card.id)
+  }
+
+  return [...duplicates]
+}
+
+export function validateDecks(blackDeck: Card[], whiteDeck: Card[]): DeckValidationResult {
+  const errors: string[] = []
+
+  if (blackDeck.length === 0) {
+    errors.push('Black deck is empty.')
+  }
+
+  if (whiteDeck.length === 0) {
+    errors.push('White deck is empty.')
+  }
+
+  blackDeck.forEach((card, index) => {
+    if (!card.id.trim()) {
+      errors.push(`Black card #${index + 1} has an empty id.`)
+    }
+
+    if (!card.text.trim()) {
+      errors.push(`Black card ${card.id || `#${index + 1}`} has empty text.`)
+    }
+
+    if (card.type !== 'black') {
+      errors.push(`Black card ${card.id || `#${index + 1}`} has invalid type ${card.type}.`)
+    }
+
+    const pickCount = card.pick ?? 1
+    if (!Number.isInteger(pickCount) || pickCount < 1 || pickCount > 2) {
+      errors.push(`Black card ${card.id || `#${index + 1}`} has invalid pick value ${String(card.pick)}.`)
+    }
+  })
+
+  whiteDeck.forEach((card, index) => {
+    if (!card.id.trim()) {
+      errors.push(`White card #${index + 1} has an empty id.`)
+    }
+
+    if (!card.text.trim()) {
+      errors.push(`White card ${card.id || `#${index + 1}`} has empty text.`)
+    }
+
+    if (card.type !== 'white') {
+      errors.push(`White card ${card.id || `#${index + 1}`} has invalid type ${card.type}.`)
+    }
+  })
+
+  const duplicateBlackIds = collectDuplicateIds(blackDeck)
+  if (duplicateBlackIds.length > 0) {
+    errors.push(`Black deck has duplicate ids: ${duplicateBlackIds.join(', ')}.`)
+  }
+
+  const duplicateWhiteIds = collectDuplicateIds(whiteDeck)
+  if (duplicateWhiteIds.length > 0) {
+    errors.push(`White deck has duplicate ids: ${duplicateWhiteIds.join(', ')}.`)
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors
+  }
+}
+
+export const deckValidation = validateDecks(initialBlackCards, initialWhiteCards)
 
 export function createPlayers(names: string[]): Player[] {
   return names.map((name, index) => ({
@@ -118,6 +201,10 @@ export function dealHands(players: Player[], deck: Card[], handSize = DEFAULT_HA
 }
 
 export function createInitialGameState(names: string[]): GameState {
+  if (!deckValidation.isValid) {
+    throw new Error(`Invalid card data: ${deckValidation.errors.join(' ')}`)
+  }
+
   const cappedNames = names.slice(0, MAX_PLAYERS)
   const largeTableMode = cappedNames.length >= LARGE_TABLE_THRESHOLD
   const handSize = largeTableMode ? QUICK_MODE_HAND_SIZE : DEFAULT_HAND_SIZE

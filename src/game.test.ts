@@ -3,11 +3,13 @@ import { blackCards } from './cards/blackCards'
 import { whiteCards } from './cards/whiteCards'
 import {
   MAX_PLAYERS,
+  type Card,
   chooseWinner,
   createInitialGameState,
   nextRound,
   shuffleCards,
-  submitAnswer
+  submitAnswer,
+  validateDecks
 } from './game'
 
 describe('game flow', () => {
@@ -140,5 +142,34 @@ describe('game flow', () => {
     const state = createInitialGameState(names)
 
     expect(state.players).toHaveLength(MAX_PLAYERS)
+  })
+
+  it('validates bad black pick values and empty text', () => {
+    const invalidBlackDeck: Card[] = [
+      { id: 'black-001', text: '', type: 'black', pick: 1 },
+      { id: 'black-002', text: 'Test', type: 'black', pick: 3 }
+    ]
+    const result = validateDecks(invalidBlackDeck, whiteCards.slice(0, 2))
+
+    expect(result.isValid).toBe(false)
+    expect(result.errors.some((error) => error.includes('empty text'))).toBe(true)
+    expect(result.errors.some((error) => error.includes('invalid pick value'))).toBe(true)
+  })
+
+  it('validates duplicate card ids', () => {
+    const blackDeckWithDuplicate: Card[] = [
+      { id: 'black-001', text: 'A ____.', type: 'black', pick: 1 },
+      { id: 'black-001', text: 'B ____.', type: 'black', pick: 1 }
+    ]
+    const whiteDeckWithDuplicate: Card[] = [
+      { id: 'white-001', text: 'First', type: 'white' },
+      { id: 'white-001', text: 'Second', type: 'white' }
+    ]
+
+    const result = validateDecks(blackDeckWithDuplicate, whiteDeckWithDuplicate)
+
+    expect(result.isValid).toBe(false)
+    expect(result.errors.some((error) => error.includes('Black deck has duplicate ids'))).toBe(true)
+    expect(result.errors.some((error) => error.includes('White deck has duplicate ids'))).toBe(true)
   })
 })
