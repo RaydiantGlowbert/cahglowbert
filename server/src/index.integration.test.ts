@@ -491,6 +491,49 @@ describe('remote multiplayer server integration', () => {
     }
   })
 
+  it('rejects rejoin when using a session token from a different room', async () => {
+    const sockets: Socket[] = []
+
+    try {
+      const roomOneHost = await connectClient()
+      sockets.push(roomOneHost)
+      const roomOneCreateAck = requireOkAck(
+        await emitAck<SocketAck>(roomOneHost, 'create-room', { playerName: 'Room One Host' })
+      )
+
+      const roomOneGuest = await connectClient()
+      sockets.push(roomOneGuest)
+      const roomOneJoinAck = requireOkAck(
+        await emitAck<SocketAck>(roomOneGuest, 'join-room', {
+          roomCode: roomOneCreateAck.room.roomCode,
+          playerName: 'Room One Guest'
+        })
+      )
+
+      const roomTwoHost = await connectClient()
+      sockets.push(roomTwoHost)
+      const roomTwoCreateAck = requireOkAck(
+        await emitAck<SocketAck>(roomTwoHost, 'create-room', { playerName: 'Room Two Host' })
+      )
+
+      const outsider = await connectClient()
+      sockets.push(outsider)
+      const crossRoomRejoinAck = await emitAck<SocketAck>(outsider, 'rejoin-room', {
+        roomCode: roomTwoCreateAck.room.roomCode,
+        sessionToken: roomOneJoinAck.sessionToken
+      })
+
+      expect(crossRoomRejoinAck.ok).toBe(false)
+      if (crossRoomRejoinAck.ok) {
+        return
+      }
+
+      expect(crossRoomRejoinAck.error).toBe('Session expired for this room.')
+    } finally {
+      disconnectSockets(...sockets)
+    }
+  })
+
   it(
     'keeps judge submissions anonymous and resolves winner aliases server-side',
     async () => {
