@@ -12,7 +12,7 @@ import { clearPersistedState, loadPersistedState, savePersistedState } from './p
 function App() {
   const [playerNamesInput, setPlayerNamesInput] = useState('Ada, Grace')
   const [gameState, setGameState] = useState<GameState | null>(null)
-  const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
+  const [selectedCardIds, setSelectedCardIds] = useState<string[]>([])
 
   useEffect(() => {
     const persisted = loadPersistedState()
@@ -50,6 +50,8 @@ function App() {
     return gameState.players.find((player) => player.id === activePlayerId) ?? null
   }, [activePlayerId, gameState])
 
+  const requiredPick = useMemo(() => gameState?.blackCard?.pick ?? 1, [gameState])
+
   const startGame = () => {
     const names = playerNamesInput
       .split(',')
@@ -58,17 +60,31 @@ function App() {
 
     const nextState = createInitialGameState(names.length >= 2 ? names : ['Player 1', 'Player 2'])
     setGameState(nextState)
-    setSelectedCardId(null)
+    setSelectedCardIds([])
   }
 
   const handleAnswerSubmit = () => {
-    if (!gameState || !activePlayerId || !selectedCardId) {
+    if (!gameState || !activePlayerId || selectedCardIds.length !== requiredPick) {
       return
     }
 
-    const nextState = submitAnswer(gameState, activePlayerId, selectedCardId)
+    const nextState = submitAnswer(gameState, activePlayerId, selectedCardIds)
     setGameState(nextState)
-    setSelectedCardId(null)
+    setSelectedCardIds([])
+  }
+
+  const handleCardToggle = (cardId: string) => {
+    setSelectedCardIds((current) => {
+      if (current.includes(cardId)) {
+        return current.filter((id) => id !== cardId)
+      }
+
+      if (current.length >= requiredPick) {
+        return current
+      }
+
+      return [...current, cardId]
+    })
   }
 
   const handleWinnerPick = (winnerId: string) => {
@@ -87,12 +103,12 @@ function App() {
 
     const nextState = nextRound(gameState)
     setGameState(nextState)
-    setSelectedCardId(null)
+    setSelectedCardIds([])
   }
 
   const handleRestart = () => {
     setGameState(null)
-    setSelectedCardId(null)
+    setSelectedCardIds([])
     setPlayerNamesInput('Ada, Grace')
     clearPersistedState()
   }
@@ -211,23 +227,28 @@ function App() {
             <section className="game-panel">
               <div className="panel-heading">
                 <h3>{activePlayer.name}, choose your best answer</h3>
-                <p>Your hand is laid out face down on the table.</p>
+                <p>Pick {requiredPick} card{requiredPick > 1 ? 's' : ''} from your hand.</p>
               </div>
               <div className="answer-grid hand-grid">
                 {activePlayer.hand.map((card) => (
                   <button
                     key={card.id}
                     type="button"
-                    className={`answer-card ${selectedCardId === card.id ? 'selected' : ''}`}
-                    onClick={() => setSelectedCardId(card.id)}
+                    className={`answer-card ${selectedCardIds.includes(card.id) ? 'selected' : ''}`}
+                    onClick={() => handleCardToggle(card.id)}
                   >
                     <span className="card-label">White card</span>
                     {card.text}
                   </button>
                 ))}
               </div>
-              <button type="button" className="primary-action" onClick={handleAnswerSubmit}>
-                Submit answer
+              <button
+                type="button"
+                className="primary-action"
+                onClick={handleAnswerSubmit}
+                disabled={selectedCardIds.length !== requiredPick}
+              >
+                Submit {requiredPick} card{requiredPick > 1 ? 's' : ''}
               </button>
             </section>
           ) : null}
@@ -243,13 +264,13 @@ function App() {
                   const speaker = gameState.players.find((player) => player.id === entry.playerId)
                   return (
                     <button
-                      key={entry.card.id}
+                      key={`${entry.playerId}-${entry.cards.map((card) => card.id).join('-')}`}
                       type="button"
                       className="answer-card"
                       onClick={() => handleWinnerPick(entry.playerId)}
                     >
                       <span className="card-label">Submitted by {speaker?.name}</span>
-                      <strong>{entry.card.text}</strong>
+                      <strong>{entry.cards.map((card) => card.text).join(' / ')}</strong>
                     </button>
                   )
                 })}

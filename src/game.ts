@@ -29,7 +29,7 @@ export type GameState = {
   blackCard: Card | null
   round: number
   phase: 'waiting-for-answers' | 'waiting-for-judge' | 'round-over' | 'game-over'
-  submittedAnswers: Array<{ playerId: string; card: Card }>
+  submittedAnswers: Array<{ playerId: string; cards: Card[] }>
   winnerId: string | null
   answeringPlayerId: string | null
   roundHistory: RoundHistoryEntry[]
@@ -123,16 +123,19 @@ export function createInitialGameState(names: string[]): GameState {
   }
 }
 
-export function submitAnswer(state: GameState, playerId: string, cardId: string): GameState {
+export function submitAnswer(state: GameState, playerId: string, cardIds: string[]): GameState {
   const player = state.players.find((entry) => entry.id === playerId)
-  const selectedCard = player?.hand.find((card) => card.id === cardId)
+  const requiredPick = state.blackCard?.pick ?? 1
+  const uniqueCardIds = Array.from(new Set(cardIds))
+  const selectedCards = player?.hand.filter((card) => uniqueCardIds.includes(card.id)) ?? []
 
   if (
     !player ||
-    !selectedCard ||
     state.phase !== 'waiting-for-answers' ||
     state.answeringPlayerId !== playerId ||
-    state.players[state.judgeIndex]?.id === playerId
+    state.players[state.judgeIndex]?.id === playerId ||
+    uniqueCardIds.length !== requiredPick ||
+    selectedCards.length !== requiredPick
   ) {
     return state
   }
@@ -141,12 +144,12 @@ export function submitAnswer(state: GameState, playerId: string, cardId: string)
     entry.id === playerId
       ? {
           ...entry,
-          hand: entry.hand.filter((card) => card.id !== cardId)
+          hand: entry.hand.filter((card) => !uniqueCardIds.includes(card.id))
         }
       : entry
   )
 
-  const nextSubmittedAnswers = [...state.submittedAnswers, { playerId, card: selectedCard }]
+  const nextSubmittedAnswers = [...state.submittedAnswers, { playerId, cards: selectedCards }]
   const allPlayersAnswered = nextSubmittedAnswers.length >= state.players.length - 1
 
   return {
@@ -180,7 +183,7 @@ export function chooseWinner(state: GameState, winnerId: string): GameState {
     {
       round: state.round,
       blackCardText: state.blackCard?.text ?? '',
-      winningCardText: winningSubmission?.card.text ?? '',
+      winningCardText: winningSubmission?.cards.map((card) => card.text).join(' / ') ?? '',
       winnerId,
       winnerName: winner.name
     }
