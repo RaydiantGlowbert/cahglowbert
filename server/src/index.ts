@@ -5,6 +5,7 @@ import { createServer } from 'http'
 import path from 'path'
 import { Server } from 'socket.io'
 import {
+  type Card,
   chooseWinner,
   createInitialGameState,
   nextRound,
@@ -34,6 +35,8 @@ type Room = {
   players: Map<string, RoomPlayerState>
   phase: 'lobby' | 'in-game'
   gameState: GameState | null
+  judgeAliasToPlayerId: Map<string, string>
+  anonymizedSubmittedAnswers: Array<{ playerId: string; cards: Card[] }>
 }
 
 const roomStore = createRoomStore({
@@ -42,6 +45,17 @@ const roomStore = createRoomStore({
   filePath: ROOMS_STORE_PATH
 })
 const rooms = new Map<string, Room>()
+
+function shuffleEntries<T>(items: T[]): T[] {
+  const nextItems = [...items]
+
+  for (let index = nextItems.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1))
+    ;[nextItems[index], nextItems[swapIndex]] = [nextItems[swapIndex], nextItems[index]]
+  }
+
+  return nextItems
+}
 
 function serializeRooms(): PersistedRoom[] {
   return [...rooms.values()].map((room) => ({
@@ -80,7 +94,9 @@ function hydrateRooms(serializedRooms: PersistedRoom[]) {
       roomCode: room.roomCode,
       phase: room.phase,
       gameState: room.gameState,
-      players
+      players,
+      judgeAliasToPlayerId: new Map(),
+      anonymizedSubmittedAnswers: []
     })
   }
 }
@@ -141,14 +157,46 @@ function toRoomSnapshot(room: Room): RoomSnapshot {
   }
 }
 
-function maskGameStateForPlayer(gameState: GameState | null, requesterGamePlayerId?: string): GameState | null {
-  if (!gameState) {
+function refreshJudgeAnonymization(room: Room) {
+  if (!room.gameState || room.gameState.phase !== 'waiting-for-judge') {
+    room.judgeAliasToPlayerId.clear()
+    room.anonymizedSubmittedAnswers = []
+    return
+  }
+
+  if (room.anonymizedSubmittedAnswers.length === room.gameState.submittedAnswers.length) {
+    return
+  }
+
+  const shuffledAnswers = shuffleEntries(room.gameState.submittedAnswers)
+  room.judgeAliasToPlayerId.clear()
+  room.anonymizedSubmittedAnswers = shuffledAnswers.map((answer, index) => {
+    const aliasId = `submission-${index + 1}`
+    room.judgeAliasToPlayerId.set(aliasId, answer.playerId)
+
+    return {
+      playerId: aliasId,
+      cards: answer.cards
+    }
+  })
+}
+
+function maskGameStateForPlayer(room: Room, requesterGamePlayerId?: string): GameState | null {
+  if (!room.gameState) {
     return null
   }
 
+  refreshJudgeAnonymization(room)
+
+  const submittedAnswers =
+    room.gameState.phase === 'waiting-for-judge'
+      ? room.anonymizedSubmittedAnswers
+      : room.gameState.submittedAnswers
+
   return {
-    ...gameState,
-    players: gameState.players.map((player) => ({
+    ...room.gameState,
+    submittedAnswers,
+    players: room.gameState.players.map((player) => ({
       ...player,
       hand: requesterGamePlayerId === player.id ? player.hand : []
     }))
@@ -160,7 +208,7 @@ function toRoomSnapshotForPlayer(room: Room, player: RoomPlayerState): RoomSnaps
 
   return {
     ...baseSnapshot,
-    gameState: maskGameStateForPlayer(room.gameState, player.gamePlayerId) ?? undefined
+    gameState: maskGameStateForPlayer(room, player.gamePlayerId) ?? undefined
   }
 }
 
@@ -258,7 +306,9 @@ io.on('connection', (socket) => {
       roomCode,
       players: new Map(),
       phase: 'lobby',
-      gameState: null
+      gameState: null,
+      judgeAliasToPlayerId: new Map(),
+      anonymizedSubmittedAnswers: []
     }
 
     const player = createPlayer(playerName, true, socket.id)
@@ -484,7 +534,8 @@ io.on('connection', (socket) => {
         return
       }
 
-      const nextState = chooseWinner(room.gameState, payload.winnerId)
+      const resolvedWinnerId = room.judgeAliasToPlayerId.get(payload.winnerId) ?? payload.winnerId
+      const nextState = chooseWinner(room.gameState, resolvedWinnerId)
       room.gameState = nextState
       persistRooms()
 
