@@ -79,7 +79,20 @@ describe('game flow', () => {
         pick: 2
       }
     }
-    const selectedCards = pickTwoState.players[1].hand.slice(0, 2)
+    const selectedCards = pickTwoState.players[1].hand.reduce<typeof pickTwoState.players[1]['hand']>((unique, card) => {
+      if (unique.some((entry) => entry.id === card.id)) {
+        return unique
+      }
+
+      if (unique.length >= 2) {
+        return unique
+      }
+
+      return [...unique, card]
+    }, [])
+
+    expect(selectedCards).toHaveLength(2)
+
     const afterFirstSubmission = submitAnswer(
       pickTwoState,
       'player-2',

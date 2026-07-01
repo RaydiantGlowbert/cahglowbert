@@ -13,10 +13,15 @@ import { clearPersistedState, loadPersistedState, savePersistedState } from './p
 
 function App() {
   const JUDGE_PAGE_SIZE = 6
+  const SHORTLIST_TRIGGER_SIZE = 12
+  const SHORTLIST_SIZE = 3
   const [playerNamesInput, setPlayerNamesInput] = useState('Ada, Grace')
   const [gameState, setGameState] = useState<GameState | null>(null)
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([])
   const [judgePage, setJudgePage] = useState(1)
+  const [shortlistMode, setShortlistMode] = useState(false)
+  const [shortlistedPlayerIds, setShortlistedPlayerIds] = useState<string[]>([])
+  const [shortlistLocked, setShortlistLocked] = useState(false)
 
   const parsedSetupNames = useMemo(
     () =>
@@ -49,6 +54,11 @@ function App() {
 
   useEffect(() => {
     setJudgePage(1)
+    setShortlistedPlayerIds([])
+    setShortlistLocked(false)
+    if (gameState?.phase !== 'waiting-for-judge') {
+      setShortlistMode(false)
+    }
   }, [gameState?.phase, gameState?.round])
 
   const activePlayerId = useMemo(() => {
@@ -76,14 +86,26 @@ function App() {
     return Math.max(1, Math.ceil(gameState.submittedAnswers.length / JUDGE_PAGE_SIZE))
   }, [gameState])
 
+  const canUseShortlist = useMemo(() => {
+    if (!gameState || gameState.phase !== 'waiting-for-judge') {
+      return false
+    }
+
+    return gameState.submittedAnswers.length >= SHORTLIST_TRIGGER_SIZE
+  }, [gameState])
+
   const visibleSubmittedAnswers = useMemo(() => {
     if (!gameState || gameState.phase !== 'waiting-for-judge') {
       return []
     }
 
+    if (shortlistMode && shortlistLocked) {
+      return gameState.submittedAnswers.filter((entry) => shortlistedPlayerIds.includes(entry.playerId))
+    }
+
     const start = (judgePage - 1) * JUDGE_PAGE_SIZE
     return gameState.submittedAnswers.slice(start, start + JUDGE_PAGE_SIZE)
-  }, [gameState, judgePage])
+  }, [gameState, judgePage, shortlistLocked, shortlistMode, shortlistedPlayerIds])
 
   const startGame = () => {
     const names = parsedSetupNames
@@ -125,6 +147,31 @@ function App() {
 
     const nextState = chooseWinner(gameState, winnerId)
     setGameState(nextState)
+  }
+
+  const handleShortlistToggle = () => {
+    if (!shortlistMode) {
+      setShortlistMode(true)
+      return
+    }
+
+    setShortlistMode(false)
+    setShortlistedPlayerIds([])
+    setShortlistLocked(false)
+  }
+
+  const handleShortlistCandidateToggle = (playerId: string) => {
+    setShortlistedPlayerIds((current) => {
+      if (current.includes(playerId)) {
+        return current.filter((id) => id !== playerId)
+      }
+
+      if (current.length >= SHORTLIST_SIZE) {
+        return current
+      }
+
+      return [...current, playerId]
+    })
   }
 
   const handleNextRound = () => {
@@ -304,12 +351,20 @@ function App() {
               <div className="answer-grid">
                 {visibleSubmittedAnswers.map((entry) => {
                   const speaker = gameState.players.find((player) => player.id === entry.playerId)
+                  const isShortlisted = shortlistedPlayerIds.includes(entry.playerId)
                   return (
                     <button
                       key={`${entry.playerId}-${entry.cards.map((card) => card.id).join('-')}`}
                       type="button"
-                      className="answer-card"
-                      onClick={() => handleWinnerPick(entry.playerId)}
+                      className={`answer-card ${isShortlisted ? 'shortlisted' : ''}`}
+                      onClick={() => {
+                        if (shortlistMode && !shortlistLocked) {
+                          handleShortlistCandidateToggle(entry.playerId)
+                          return
+                        }
+
+                        handleWinnerPick(entry.playerId)
+                      }}
                     >
                       <span className="card-label">Submitted by {speaker?.name}</span>
                       <strong>{entry.cards.map((card) => card.text).join(' / ')}</strong>
@@ -317,7 +372,45 @@ function App() {
                   )
                 })}
               </div>
-              {judgePageCount > 1 ? (
+              {canUseShortlist ? (
+                <div className="judge-shortlist">
+                  <button
+                    type="button"
+                    className="secondary-action"
+                    onClick={handleShortlistToggle}
+                  >
+                    {shortlistMode ? 'Disable shortlist' : 'Enable shortlist'}
+                  </button>
+                  {shortlistMode && !shortlistLocked ? (
+                    <>
+                      <span>
+                        Select up to {SHORTLIST_SIZE} finalists ({shortlistedPlayerIds.length}/{SHORTLIST_SIZE})
+                      </span>
+                      <button
+                        type="button"
+                        className="secondary-action"
+                        onClick={() => setShortlistLocked(true)}
+                        disabled={shortlistedPlayerIds.length < 2}
+                      >
+                        Review shortlist
+                      </button>
+                    </>
+                  ) : null}
+                  {shortlistMode && shortlistLocked ? (
+                    <>
+                      <span>Pick the winner from shortlisted finalists.</span>
+                      <button
+                        type="button"
+                        className="secondary-action"
+                        onClick={() => setShortlistLocked(false)}
+                      >
+                        Edit shortlist
+                      </button>
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
+              {judgePageCount > 1 && !(shortlistMode && shortlistLocked) ? (
                 <div className="judge-pagination">
                   <button
                     type="button"
@@ -349,7 +442,7 @@ function App() {
               </div>
               <div className="action-row">
                 <button type="button" className="primary-action" onClick={handleNextRound}>
-                  {gameState.round >= 5 ? 'Finish game' : 'Next round'}
+                  {gameState.round >= gameState.maxRounds ? 'Finish game' : 'Next round'}
                 </button>
                 <button type="button" className="secondary-action" onClick={handleRestart}>
                   Restart game
