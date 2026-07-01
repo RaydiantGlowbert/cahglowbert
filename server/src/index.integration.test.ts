@@ -377,6 +377,46 @@ describe('remote multiplayer server integration', () => {
     }
   })
 
+  it('rejects joining when room is full at 15 players', async () => {
+    const sockets: Socket[] = []
+
+    try {
+      const host = await connectClient()
+      sockets.push(host)
+
+      const createAck = requireOkAck(await emitAck<SocketAck>(host, 'create-room', { playerName: 'Host' }))
+
+      for (let index = 0; index < 14; index += 1) {
+        const player = await connectClient()
+        sockets.push(player)
+
+        const joinAck = await emitAck<SocketAck>(player, 'join-room', {
+          roomCode: createAck.room.roomCode,
+          playerName: `Player ${index + 1}`
+        })
+
+        expect(joinAck.ok).toBe(true)
+      }
+
+      const overflowPlayer = await connectClient()
+      sockets.push(overflowPlayer)
+
+      const overflowAck = await emitAck<SocketAck>(overflowPlayer, 'join-room', {
+        roomCode: createAck.room.roomCode,
+        playerName: 'Player 16'
+      })
+
+      expect(overflowAck.ok).toBe(false)
+      if (overflowAck.ok) {
+        return
+      }
+
+      expect(overflowAck.error).toBe('Room is full.')
+    } finally {
+      disconnectSockets(...sockets)
+    }
+  })
+
   it(
     'keeps judge submissions anonymous and resolves winner aliases server-side',
     async () => {
