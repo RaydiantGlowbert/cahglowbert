@@ -198,4 +198,88 @@ describe('remote multiplayer server integration', () => {
     },
     15000
   )
+
+  it('allows in-game rejoin by session token and preserves hand privacy', async () => {
+    const host = await connectClient()
+    const guest = await connectClient()
+
+    try {
+      const createAck = await emitAck<SocketAck>(host, 'create-room', { playerName: 'Host' })
+      expect(createAck.ok).toBe(true)
+      if (!createAck.ok) {
+        return
+      }
+
+      const joinAck = await emitAck<SocketAck>(guest, 'join-room', {
+        roomCode: createAck.room.roomCode,
+        playerName: 'Guest'
+      })
+      expect(joinAck.ok).toBe(true)
+      if (!joinAck.ok) {
+        return
+      }
+
+      const hostInGamePromise = waitForRoomUpdated(
+        host,
+        (room) => room.phase === 'in-game' && Boolean(room.gameState)
+      )
+
+      const startAck = await emitAck<SocketAck | { ok: false; error: string }>(host, 'start-game')
+      expect(startAck.ok).toBe(true)
+
+      const hostInGame = await hostInGamePromise
+      const hostPlayer = hostInGame.players.find((player) => player.id === createAck.playerId)
+      const guestPlayer = hostInGame.players.find((player) => player.id === joinAck.playerId)
+
+      expect(hostPlayer?.gamePlayerId).toBeTruthy()
+      expect(guestPlayer?.gamePlayerId).toBeTruthy()
+      expect(hostInGame.gameState).toBeTruthy()
+      if (!hostPlayer?.gamePlayerId || !guestPlayer?.gamePlayerId || !hostInGame.gameState) {
+        return
+      }
+
+      const guestGamePlayerInHostView = hostInGame.gameState.players.find(
+        (player) => player.id === guestPlayer.gamePlayerId
+      )
+
+      expect(guestGamePlayerInHostView?.hand).toEqual([])
+
+      guest.disconnect()
+
+      const guestRejoinSocket = await connectClient()
+      try {
+        const rejoinAck = await emitAck<SocketAck>(guestRejoinSocket, 'rejoin-room', {
+          roomCode: createAck.room.roomCode,
+          sessionToken: joinAck.sessionToken
+        })
+
+        expect(rejoinAck.ok).toBe(true)
+        if (!rejoinAck.ok) {
+          return
+        }
+
+        expect(rejoinAck.playerId).toBe(joinAck.playerId)
+        const rejoinGuestPlayer = rejoinAck.room.players.find((player) => player.id === joinAck.playerId)
+        expect(rejoinGuestPlayer?.connected).toBe(true)
+        expect(rejoinGuestPlayer?.gamePlayerId).toBe(guestPlayer.gamePlayerId)
+
+        const rejoinGameState = rejoinAck.room.gameState
+        expect(rejoinGameState).toBeTruthy()
+        if (!rejoinGameState) {
+          return
+        }
+
+        const rejoinSelf = rejoinGameState.players.find((player) => player.id === guestPlayer.gamePlayerId)
+        const rejoinHost = rejoinGameState.players.find((player) => player.id === hostPlayer.gamePlayerId)
+
+        expect(rejoinSelf?.hand.length).toBeGreaterThan(0)
+        expect(rejoinHost?.hand).toEqual([])
+      } finally {
+        guestRejoinSocket.disconnect()
+      }
+    } finally {
+      host.disconnect()
+      guest.disconnect()
+    }
+  })
 })
