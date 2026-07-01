@@ -3,6 +3,12 @@ import { io, type Socket } from 'socket.io-client'
 import type { RoomSnapshot, SocketAck } from './types'
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL ?? 'http://localhost:3001'
+const SESSION_STORAGE_KEY = 'cah-remote-session'
+
+type SavedSession = {
+  roomCode: string
+  sessionToken: string
+}
 
 type RemoteLobbyProps = {
   onBackToLocal: () => void
@@ -19,6 +25,19 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
   const [currentPlayerId, setCurrentPlayerId] = useState<string | null>(null)
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([])
 
+  const savedSession = useMemo(() => {
+    const raw = window.localStorage.getItem(SESSION_STORAGE_KEY)
+    if (!raw) {
+      return null
+    }
+
+    try {
+      return JSON.parse(raw) as SavedSession
+    } catch {
+      return null
+    }
+  }, [])
+
   useEffect(() => {
     const nextSocket = io(SERVER_URL, {
       transports: ['websocket']
@@ -29,6 +48,28 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
     nextSocket.on('connect', () => {
       setIsConnected(true)
       setErrorMessage(null)
+
+      if (!savedSession) {
+        return
+      }
+
+      nextSocket.emit(
+        'rejoin-room',
+        {
+          roomCode: savedSession.roomCode,
+          sessionToken: savedSession.sessionToken
+        },
+        (ack: SocketAck) => {
+          if (!ack.ok) {
+            window.localStorage.removeItem(SESSION_STORAGE_KEY)
+            return
+          }
+
+          setCurrentPlayerId(ack.playerId)
+          setCurrentRoom(ack.room)
+          setRoomCodeInput(ack.room.roomCode)
+        }
+      )
     })
 
     nextSocket.on('disconnect', () => {
@@ -44,7 +85,7 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
       nextSocket.disconnect()
       setSocket(null)
     }
-  }, [])
+  }, [savedSession])
 
   const playerInRoom = useMemo(
     () => currentRoom?.players.find((player) => player.id === currentPlayerId) ?? null,
@@ -87,6 +128,10 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
       setCurrentPlayerId(ack.playerId)
       setCurrentRoom(ack.room)
       setRoomCodeInput(ack.room.roomCode)
+      window.localStorage.setItem(
+        SESSION_STORAGE_KEY,
+        JSON.stringify({ roomCode: ack.room.roomCode, sessionToken: ack.sessionToken })
+      )
     })
   }
 
@@ -110,6 +155,10 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
 
         setCurrentPlayerId(ack.playerId)
         setCurrentRoom(ack.room)
+        window.localStorage.setItem(
+          SESSION_STORAGE_KEY,
+          JSON.stringify({ roomCode: ack.room.roomCode, sessionToken: ack.sessionToken })
+        )
       }
     )
   }
@@ -120,6 +169,7 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
     setCurrentPlayerId(null)
     setErrorMessage(null)
     setSelectedCardIds([])
+    window.localStorage.removeItem(SESSION_STORAGE_KEY)
   }
 
   const startGame = () => {

@@ -5,6 +5,7 @@ export type RoomPlayer = {
   name: string
   isHost: boolean
   gamePlayerId?: string
+  connected: boolean
 }
 
 export type RoomSnapshot = {
@@ -15,5 +16,5 @@ export type RoomSnapshot = {
 }
 
 export type SocketAck =
-  | { ok: true; room: RoomSnapshot; playerId: string }
+  | { ok: true; room: RoomSnapshot; playerId: string; sessionToken: string }
   | { ok: false; error: string }
