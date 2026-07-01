@@ -1156,6 +1156,60 @@ describe('remote multiplayer server integration', () => {
     }
   })
 
+  it('rejects rejoin for player pruned from lobby on game start', async () => {
+    const host = await connectClient()
+    const guestOne = await connectClient()
+    const guestTwo = await connectClient()
+
+    try {
+      const createAck = requireOkAck(await emitAck<SocketAck>(host, 'create-room', { playerName: 'Host' }))
+      const joinOneAck = requireOkAck(
+        await emitAck<SocketAck>(guestOne, 'join-room', {
+          roomCode: createAck.room.roomCode,
+          playerName: 'Guest One'
+        })
+      )
+      requireOkAck(
+        await emitAck<SocketAck>(guestTwo, 'join-room', {
+          roomCode: createAck.room.roomCode,
+          playerName: 'Guest Two'
+        })
+      )
+
+      const guestOneDisconnectedPromise = waitForRoomUpdated(host, (room) => {
+        const guestOnePlayer = room.players.find((player) => player.id === joinOneAck.playerId)
+        return Boolean(guestOnePlayer && !guestOnePlayer.connected)
+      })
+
+      guestOne.disconnect()
+      await guestOneDisconnectedPromise
+
+      const hostInGamePromise = waitForRoomUpdated(host, (room) => room.phase === 'in-game' && Boolean(room.gameState))
+      const startAck = await emitAck<SocketAck | { ok: false; error: string }>(host, 'start-game')
+      expect(startAck.ok).toBe(true)
+      await hostInGamePromise
+
+      const rejoinClient = await connectClient()
+      try {
+        const rejoinAck = await emitAck<SocketAck>(rejoinClient, 'rejoin-room', {
+          roomCode: createAck.room.roomCode,
+          sessionToken: joinOneAck.sessionToken
+        })
+
+        expect(rejoinAck.ok).toBe(false)
+        if (rejoinAck.ok) {
+          return
+        }
+
+        expect(rejoinAck.error).toBe('Session expired for this room.')
+      } finally {
+        rejoinClient.disconnect()
+      }
+    } finally {
+      disconnectSockets(host, guestOne, guestTwo)
+    }
+  })
+
   it('transfers host to connected player when another player is disconnected', async () => {
     const host = await connectClient()
     const guestOne = await connectClient()
