@@ -18,6 +18,7 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
   const [socket, setSocket] = useState<Socket | null>(null)
   const [isConnected, setIsConnected] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [liveMessage, setLiveMessage] = useState('')
   const [createName, setCreateName] = useState('')
   const [joinName, setJoinName] = useState('')
   const [roomCodeInput, setRoomCodeInput] = useState('')
@@ -155,6 +156,7 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
   const isActiveAnsweringPlayer = Boolean(
     gameState && playerInRoom?.gamePlayerId && gameState.answeringPlayerId === playerInRoom.gamePlayerId
   )
+  const canAdvanceRound = Boolean(playerInRoom?.isHost)
   const connectedPlayersCount = currentRoom?.players.filter((player) => player.connected).length ?? 0
   const disconnectedPlayersCount = currentRoom?.players.filter((player) => !player.connected).length ?? 0
   const shouldShowRecoveryHint =
@@ -164,6 +166,32 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
   useEffect(() => {
     setSelectedCardIds([])
   }, [gameState?.phase, gameState?.round])
+
+  useEffect(() => {
+    if (!currentRoom) {
+      return
+    }
+
+    if (currentRoom.phase === 'lobby') {
+      setLiveMessage(`In lobby. ${connectedPlayersCount} players connected.`)
+      return
+    }
+
+    if (!gameState) {
+      return
+    }
+
+    const normalizedPhase = gameState.phase.replace(/-/g, ' ')
+    setLiveMessage(`Round ${gameState.round}. Phase: ${normalizedPhase}.`)
+  }, [connectedPlayersCount, currentRoom, gameState])
+
+  useEffect(() => {
+    if (!errorMessage) {
+      return
+    }
+
+    setLiveMessage(errorMessage)
+  }, [errorMessage])
 
   const createRoom = () => {
     if (!socket) {
@@ -294,6 +322,7 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
 
   return (
     <section className="game-panel remote-panel">
+      <p className="sr-only" aria-live="polite">{liveMessage}</p>
       <div className="panel-heading">
         <h3>Remote Multiplayer (M1)</h3>
         <p>Create a room, join with a code, and confirm everyone appears in the waiting room.</p>
@@ -488,6 +517,8 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
                         className="answer-card"
                         onClick={() => chooseWinner(entry.playerId)}
                         disabled={!isJudge}
+                        title={isJudge ? `Pick Submission ${index + 1} as winner` : 'Only the judge can pick a winner'}
+                        aria-label={`Submission ${index + 1}${isJudge ? ', pick as winner' : ', waiting for judge'}`}
                       >
                         <span className="card-label">Submission {index + 1}</span>
                         <strong>{entry.cards.map((card) => card.text).join(' / ')}</strong>
@@ -501,9 +532,16 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
                 <div className="sidebar-card">
                   <h3>Round complete</h3>
                   <p>{gameState.players.find((player) => player.id === gameState.winnerId)?.name} wins this round.</p>
-                  <button type="button" className="primary-action" onClick={advanceRound}>
+                  <button
+                    type="button"
+                    className="primary-action"
+                    onClick={advanceRound}
+                    disabled={!canAdvanceRound}
+                    title={canAdvanceRound ? 'Advance to the next round' : 'Only the host can advance rounds'}
+                  >
                     {gameState.round >= gameState.maxRounds ? 'Finish game' : 'Next round'}
                   </button>
+                  {!canAdvanceRound ? <p className="setup-warning">Waiting for host to advance the round.</p> : null}
                 </div>
               ) : null}
 
