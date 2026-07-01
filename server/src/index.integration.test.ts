@@ -337,6 +337,46 @@ describe('remote multiplayer server integration', () => {
     }
   })
 
+  it('rejects join when room code does not exist', async () => {
+    const player = await connectClient()
+
+    try {
+      const joinAck = await emitAck<SocketAck>(player, 'join-room', {
+        roomCode: 'ZZZZZZ',
+        playerName: 'Player'
+      })
+
+      expect(joinAck.ok).toBe(false)
+      if (joinAck.ok) {
+        return
+      }
+
+      expect(joinAck.error).toBe('Room not found.')
+    } finally {
+      disconnectSockets(player)
+    }
+  })
+
+  it('rejects rejoin when room code does not exist', async () => {
+    const player = await connectClient()
+
+    try {
+      const rejoinAck = await emitAck<SocketAck>(player, 'rejoin-room', {
+        roomCode: 'ZZZZZZ',
+        sessionToken: 'fake-token'
+      })
+
+      expect(rejoinAck.ok).toBe(false)
+      if (rejoinAck.ok) {
+        return
+      }
+
+      expect(rejoinAck.error).toBe('Room not found.')
+    } finally {
+      disconnectSockets(player)
+    }
+  })
+
   it(
     'keeps judge submissions anonymous and resolves winner aliases server-side',
     async () => {
