@@ -572,4 +572,220 @@ describe('remote multiplayer server integration', () => {
     },
     20000
   )
+
+  it(
+    'preserves anonymous aliases when judge rejoins during judge phase',
+    async () => {
+      const host = await connectClient()
+      const guestOne = await connectClient()
+      const guestTwo = await connectClient()
+
+      try {
+        const createAck = await emitAck<SocketAck>(host, 'create-room', { playerName: 'Host' })
+        expect(createAck.ok).toBe(true)
+        if (!createAck.ok) {
+          return
+        }
+
+        const joinOneAck = await emitAck<SocketAck>(guestOne, 'join-room', {
+          roomCode: createAck.room.roomCode,
+          playerName: 'Guest One'
+        })
+        expect(joinOneAck.ok).toBe(true)
+        if (!joinOneAck.ok) {
+          return
+        }
+
+        const joinTwoAck = await emitAck<SocketAck>(guestTwo, 'join-room', {
+          roomCode: createAck.room.roomCode,
+          playerName: 'Guest Two'
+        })
+        expect(joinTwoAck.ok).toBe(true)
+        if (!joinTwoAck.ok) {
+          return
+        }
+
+        const hostInGamePromise = waitForRoomUpdated(
+          host,
+          (room) => room.phase === 'in-game' && Boolean(room.gameState)
+        )
+        const guestOneInGamePromise = waitForRoomUpdated(
+          guestOne,
+          (room) => room.phase === 'in-game' && Boolean(room.gameState)
+        )
+        const guestTwoInGamePromise = waitForRoomUpdated(
+          guestTwo,
+          (room) => room.phase === 'in-game' && Boolean(room.gameState)
+        )
+
+        const startAck = await emitAck<SocketAck | { ok: false; error: string }>(host, 'start-game')
+        expect(startAck.ok).toBe(true)
+
+        const hostInGame = await hostInGamePromise
+        const guestOneInGame = await guestOneInGamePromise
+        const guestTwoInGame = await guestTwoInGamePromise
+
+        expect(hostInGame.gameState).toBeTruthy()
+        if (!hostInGame.gameState) {
+          return
+        }
+
+        const playerToSocket = new Map<string, Socket>([
+          [createAck.playerId, host],
+          [joinOneAck.playerId, guestOne],
+          [joinTwoAck.playerId, guestTwo]
+        ])
+        const playerToSelfView = new Map<string, RoomSnapshot>([
+          [createAck.playerId, hostInGame],
+          [joinOneAck.playerId, guestOneInGame],
+          [joinTwoAck.playerId, guestTwoInGame]
+        ])
+        const playerToGamePlayerId = new Map<string, string>()
+
+        for (const roomPlayer of hostInGame.players) {
+          if (roomPlayer.gamePlayerId) {
+            playerToGamePlayerId.set(roomPlayer.id, roomPlayer.gamePlayerId)
+          }
+        }
+
+        const judgePlayerId = hostInGame.gameState.players[hostInGame.gameState.judgeIndex]?.id
+        const firstAnsweringPlayerId = hostInGame.gameState.answeringPlayerId
+        expect(judgePlayerId).toBeTruthy()
+        expect(firstAnsweringPlayerId).toBeTruthy()
+        if (!judgePlayerId || !firstAnsweringPlayerId) {
+          return
+        }
+
+        const findRoomPlayerIdByGamePlayerId = (gamePlayerId: string) =>
+          [...playerToGamePlayerId.entries()].find((entry) => entry[1] === gamePlayerId)?.[0]
+
+        const firstAnsweringRoomPlayerId = findRoomPlayerIdByGamePlayerId(firstAnsweringPlayerId)
+        expect(firstAnsweringRoomPlayerId).toBeTruthy()
+        if (!firstAnsweringRoomPlayerId) {
+          return
+        }
+
+        const firstAnsweringSocket = playerToSocket.get(firstAnsweringRoomPlayerId)
+        const firstAnsweringView = playerToSelfView.get(firstAnsweringRoomPlayerId)
+        const firstAnsweringHand = firstAnsweringView?.gameState?.players.find(
+          (player) => player.id === firstAnsweringPlayerId
+        )?.hand
+        expect(firstAnsweringSocket).toBeTruthy()
+        expect(firstAnsweringHand?.length).toBeGreaterThan(0)
+        if (!firstAnsweringSocket || !firstAnsweringHand || firstAnsweringHand.length === 0) {
+          return
+        }
+
+        const secondAnswerTurnPromise = waitForRoomUpdated(
+          host,
+          (room) =>
+            room.gameState?.phase === 'waiting-for-answers' &&
+            room.gameState.submittedAnswers.length === 1 &&
+            Boolean(room.gameState.answeringPlayerId)
+        )
+
+        const firstSubmitAck = await emitAck<BoolAck>(firstAnsweringSocket, 'submit-answer', {
+          cardIds: [firstAnsweringHand[0].id]
+        })
+        expect(firstSubmitAck.ok).toBe(true)
+
+        const secondTurnRoom = await secondAnswerTurnPromise
+        const secondAnsweringPlayerId = secondTurnRoom.gameState?.answeringPlayerId
+        expect(secondAnsweringPlayerId).toBeTruthy()
+        if (!secondAnsweringPlayerId) {
+          return
+        }
+
+        const secondAnsweringRoomPlayerId = findRoomPlayerIdByGamePlayerId(secondAnsweringPlayerId)
+        expect(secondAnsweringRoomPlayerId).toBeTruthy()
+        if (!secondAnsweringRoomPlayerId) {
+          return
+        }
+
+        const secondAnsweringSocket = playerToSocket.get(secondAnsweringRoomPlayerId)
+        const secondAnsweringView = playerToSelfView.get(secondAnsweringRoomPlayerId)
+        const secondAnsweringHand = secondAnsweringView?.gameState?.players.find(
+          (player) => player.id === secondAnsweringPlayerId
+        )?.hand
+        expect(secondAnsweringSocket).toBeTruthy()
+        expect(secondAnsweringHand?.length).toBeGreaterThan(0)
+        if (!secondAnsweringSocket || !secondAnsweringHand || secondAnsweringHand.length === 0) {
+          return
+        }
+
+        const judgeRoomPlayerId = findRoomPlayerIdByGamePlayerId(judgePlayerId)
+        expect(judgeRoomPlayerId).toBeTruthy()
+        if (!judgeRoomPlayerId) {
+          return
+        }
+
+        const judgeSocket = playerToSocket.get(judgeRoomPlayerId)
+        expect(judgeSocket).toBeTruthy()
+        if (!judgeSocket) {
+          return
+        }
+
+        const judgeViewPromise = waitForRoomUpdated(
+          judgeSocket,
+          (room) => room.gameState?.phase === 'waiting-for-judge' && room.gameState.submittedAnswers.length === 2
+        )
+
+        const secondSubmitAck = await emitAck<BoolAck>(secondAnsweringSocket, 'submit-answer', {
+          cardIds: [secondAnsweringHand[0].id]
+        })
+        expect(secondSubmitAck.ok).toBe(true)
+
+        const judgeView = await judgeViewPromise
+        const initialAliasIds = (judgeView.gameState?.submittedAnswers ?? []).map((entry) => entry.playerId)
+
+        expect(initialAliasIds).toHaveLength(2)
+        expect(initialAliasIds.every((id) => /^submission-\d+$/.test(id))).toBe(true)
+
+        judgeSocket.disconnect()
+
+        const rejoinedJudgeSocket = await connectClient()
+        try {
+          const rejoinAck = await emitAck<SocketAck>(rejoinedJudgeSocket, 'rejoin-room', {
+            roomCode: createAck.room.roomCode,
+            sessionToken: createAck.sessionToken
+          })
+
+          expect(rejoinAck.ok).toBe(true)
+          if (!rejoinAck.ok) {
+            return
+          }
+
+          expect(rejoinAck.playerId).toBe(createAck.playerId)
+          expect(rejoinAck.room.gameState?.phase).toBe('waiting-for-judge')
+
+          const rejoinAliasIds = (rejoinAck.room.gameState?.submittedAnswers ?? []).map((entry) => entry.playerId)
+          expect(rejoinAliasIds).toEqual(initialAliasIds)
+
+          const roundOverPromise = waitForRoomUpdated(
+            rejoinedJudgeSocket,
+            (room) => room.gameState?.phase === 'round-over' && Boolean(room.gameState.winnerId)
+          )
+
+          const pickAck = await emitAck<BoolAck>(rejoinedJudgeSocket, 'choose-winner', {
+            winnerId: initialAliasIds[0]
+          })
+          expect(pickAck.ok).toBe(true)
+
+          const roundOverView = await roundOverPromise
+          const winnerId = roundOverView.gameState?.winnerId
+
+          expect(winnerId).toBeTruthy()
+          expect(typeof winnerId).toBe('string')
+          expect(/^submission-\d+$/.test(winnerId ?? '')).toBe(false)
+        } finally {
+          rejoinedJudgeSocket.disconnect()
+        }
+      } finally {
+        host.disconnect()
+        guestOne.disconnect()
+        guestTwo.disconnect()
+      }
+    },
+    25000
+  )
 })
