@@ -316,6 +316,27 @@ describe('remote multiplayer server integration', () => {
     }
   })
 
+  it('rejects rejoin when session token is invalid', async () => {
+    const setup = await setupTwoPlayerRoom({ startGame: false })
+    const outsider = await connectClient()
+
+    try {
+      const rejoinAck = await emitAck<SocketAck>(outsider, 'rejoin-room', {
+        roomCode: setup.createAck.room.roomCode,
+        sessionToken: 'not-a-real-session-token'
+      })
+
+      expect(rejoinAck.ok).toBe(false)
+      if (rejoinAck.ok) {
+        return
+      }
+
+      expect(rejoinAck.error).toBe('Session expired for this room.')
+    } finally {
+      disconnectSockets(setup.host, setup.guest, outsider)
+    }
+  })
+
   it(
     'keeps judge submissions anonymous and resolves winner aliases server-side',
     async () => {
