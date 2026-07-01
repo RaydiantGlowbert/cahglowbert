@@ -14,6 +14,14 @@ const SERVER_URL = 'http://localhost:3011'
 
 type BoolAck = { ok: true } | { ok: false; error: string }
 type SuccessSocketAck = Extract<SocketAck, { ok: true }>
+type TwoPlayerSetup = {
+  host: Socket
+  guest: Socket
+  createAck: SuccessSocketAck
+  joinAck: SuccessSocketAck
+  hostInGame?: RoomSnapshot
+  guestInGame?: RoomSnapshot
+}
 
 function connectClient(): Promise<Socket> {
   return new Promise((resolve, reject) => {
@@ -65,6 +73,47 @@ function requireOkAck(ack: SocketAck): SuccessSocketAck {
 function disconnectSockets(...sockets: Socket[]) {
   for (const socket of sockets) {
     socket.disconnect()
+  }
+}
+
+async function setupTwoPlayerRoom(options?: { startGame?: boolean }): Promise<TwoPlayerSetup> {
+  const startGame = options?.startGame ?? true
+  const host = await connectClient()
+  const guest = await connectClient()
+
+  const createAck = requireOkAck(await emitAck<SocketAck>(host, 'create-room', { playerName: 'Host' }))
+  const joinAck = requireOkAck(
+    await emitAck<SocketAck>(guest, 'join-room', {
+      roomCode: createAck.room.roomCode,
+      playerName: 'Guest'
+    })
+  )
+
+  if (!startGame) {
+    return {
+      host,
+      guest,
+      createAck,
+      joinAck
+    }
+  }
+
+  const hostInGamePromise = waitForRoomUpdated(host, (room) => room.phase === 'in-game' && Boolean(room.gameState))
+  const guestInGamePromise = waitForRoomUpdated(
+    guest,
+    (room) => room.phase === 'in-game' && Boolean(room.gameState)
+  )
+
+  const startAck = await emitAck<SocketAck | { ok: false; error: string }>(host, 'start-game')
+  expect(startAck.ok).toBe(true)
+
+  return {
+    host,
+    guest,
+    createAck,
+    joinAck,
+    hostInGame: await hostInGamePromise,
+    guestInGame: await guestInGamePromise
   }
 }
 
@@ -253,23 +302,9 @@ describe('remote multiplayer server integration', () => {
   })
 
   it('enforces host-only start game', async () => {
-    const host = await connectClient()
-    const guest = await connectClient()
-
+    const setup = await setupTwoPlayerRoom({ startGame: false })
     try {
-      const createAck = await emitAck<SocketAck>(host, 'create-room', { playerName: 'Host' })
-      expect(createAck.ok).toBe(true)
-      if (!createAck.ok) {
-        return
-      }
-
-      const joinAck = await emitAck<SocketAck>(guest, 'join-room', {
-        roomCode: createAck.room.roomCode,
-        playerName: 'Guest'
-      })
-      expect(joinAck.ok).toBe(true)
-
-      const startByGuest = await emitAck<SocketAck | { ok: false; error: string }>(guest, 'start-game')
+      const startByGuest = await emitAck<SocketAck | { ok: false; error: string }>(setup.guest, 'start-game')
       expect(startByGuest.ok).toBe(false)
       if (startByGuest.ok) {
         return
@@ -277,50 +312,26 @@ describe('remote multiplayer server integration', () => {
 
       expect(startByGuest.error).toContain('Only the host')
     } finally {
-      host.disconnect()
-      guest.disconnect()
+      disconnectSockets(setup.host, setup.guest)
     }
   })
 
   it(
     'keeps judge submissions anonymous and resolves winner aliases server-side',
     async () => {
-    const host = await connectClient()
-    const guest = await connectClient()
-
+    const setup = await setupTwoPlayerRoom()
     try {
-      const createAck = await emitAck<SocketAck>(host, 'create-room', { playerName: 'Host' })
-      expect(createAck.ok).toBe(true)
-      if (!createAck.ok) {
+      const hostInGame = setup.hostInGame
+      const guestInGame = setup.guestInGame
+
+      expect(hostInGame).toBeTruthy()
+      expect(guestInGame).toBeTruthy()
+      if (!hostInGame || !guestInGame) {
         return
       }
 
-      const joinAck = await emitAck<SocketAck>(guest, 'join-room', {
-        roomCode: createAck.room.roomCode,
-        playerName: 'Guest'
-      })
-      expect(joinAck.ok).toBe(true)
-      if (!joinAck.ok) {
-        return
-      }
-
-      const hostInGamePromise = waitForRoomUpdated(
-        host,
-        (room) => room.phase === 'in-game' && Boolean(room.gameState)
-      )
-      const guestInGamePromise = waitForRoomUpdated(
-        guest,
-        (room) => room.phase === 'in-game' && Boolean(room.gameState)
-      )
-
-      const startAck = await emitAck<SocketAck | { ok: false; error: string }>(host, 'start-game')
-      expect(startAck.ok).toBe(true)
-
-      const hostInGame = await hostInGamePromise
-      const guestInGame = await guestInGamePromise
-
-      const hostPlayer = hostInGame.players.find((player) => player.id === createAck.playerId)
-      const guestPlayer = guestInGame.players.find((player) => player.id === joinAck.playerId)
+      const hostPlayer = hostInGame.players.find((player) => player.id === setup.createAck.playerId)
+      const guestPlayer = guestInGame.players.find((player) => player.id === setup.joinAck.playerId)
 
       expect(hostPlayer?.gamePlayerId).toBeTruthy()
       expect(guestPlayer?.gamePlayerId).toBeTruthy()
@@ -336,7 +347,7 @@ describe('remote multiplayer server integration', () => {
         return
       }
 
-      const answeringSocket = hostPlayer.gamePlayerId === answeringPlayerId ? host : guest
+      const answeringSocket = hostPlayer.gamePlayerId === answeringPlayerId ? setup.host : setup.guest
       const answeringRoom = hostPlayer.gamePlayerId === answeringPlayerId ? hostInGame : guestInGame
       const answeringGamePlayer = answeringRoom.gameState.players.find((player) => player.id === answeringPlayerId)
 
@@ -345,8 +356,8 @@ describe('remote multiplayer server integration', () => {
         return
       }
 
-      const judgeSocket = hostPlayer.gamePlayerId === judgePlayerId ? host : guest
-      const nonJudgeSocket = judgeSocket === host ? guest : host
+      const judgeSocket = hostPlayer.gamePlayerId === judgePlayerId ? setup.host : setup.guest
+      const nonJudgeSocket = judgeSocket === setup.host ? setup.guest : setup.host
 
       const judgeViewPromise = waitForRoomUpdated(
         judgeSocket,
@@ -383,44 +394,23 @@ describe('remote multiplayer server integration', () => {
 
       expect(roundOverView.gameState?.winnerId).toBe(answeringPlayerId)
     } finally {
-      host.disconnect()
-      guest.disconnect()
+      disconnectSockets(setup.host, setup.guest)
     }
     },
     15000
   )
 
   it('allows in-game rejoin by session token and preserves hand privacy', async () => {
-    const host = await connectClient()
-    const guest = await connectClient()
-
+    const setup = await setupTwoPlayerRoom()
     try {
-      const createAck = await emitAck<SocketAck>(host, 'create-room', { playerName: 'Host' })
-      expect(createAck.ok).toBe(true)
-      if (!createAck.ok) {
+      const hostInGame = setup.hostInGame
+      expect(hostInGame).toBeTruthy()
+      if (!hostInGame) {
         return
       }
 
-      const joinAck = await emitAck<SocketAck>(guest, 'join-room', {
-        roomCode: createAck.room.roomCode,
-        playerName: 'Guest'
-      })
-      expect(joinAck.ok).toBe(true)
-      if (!joinAck.ok) {
-        return
-      }
-
-      const hostInGamePromise = waitForRoomUpdated(
-        host,
-        (room) => room.phase === 'in-game' && Boolean(room.gameState)
-      )
-
-      const startAck = await emitAck<SocketAck | { ok: false; error: string }>(host, 'start-game')
-      expect(startAck.ok).toBe(true)
-
-      const hostInGame = await hostInGamePromise
-      const hostPlayer = hostInGame.players.find((player) => player.id === createAck.playerId)
-      const guestPlayer = hostInGame.players.find((player) => player.id === joinAck.playerId)
+      const hostPlayer = hostInGame.players.find((player) => player.id === setup.createAck.playerId)
+      const guestPlayer = hostInGame.players.find((player) => player.id === setup.joinAck.playerId)
 
       expect(hostPlayer?.gamePlayerId).toBeTruthy()
       expect(guestPlayer?.gamePlayerId).toBeTruthy()
@@ -435,13 +425,13 @@ describe('remote multiplayer server integration', () => {
 
       expect(guestGamePlayerInHostView?.hand).toEqual([])
 
-      guest.disconnect()
+      setup.guest.disconnect()
 
       const guestRejoinSocket = await connectClient()
       try {
         const rejoinAck = await emitAck<SocketAck>(guestRejoinSocket, 'rejoin-room', {
-          roomCode: createAck.room.roomCode,
-          sessionToken: joinAck.sessionToken
+          roomCode: setup.createAck.room.roomCode,
+          sessionToken: setup.joinAck.sessionToken
         })
 
         expect(rejoinAck.ok).toBe(true)
@@ -449,8 +439,8 @@ describe('remote multiplayer server integration', () => {
           return
         }
 
-        expect(rejoinAck.playerId).toBe(joinAck.playerId)
-        const rejoinGuestPlayer = rejoinAck.room.players.find((player) => player.id === joinAck.playerId)
+        expect(rejoinAck.playerId).toBe(setup.joinAck.playerId)
+        const rejoinGuestPlayer = rejoinAck.room.players.find((player) => player.id === setup.joinAck.playerId)
         expect(rejoinGuestPlayer?.connected).toBe(true)
         expect(rejoinGuestPlayer?.gamePlayerId).toBe(guestPlayer.gamePlayerId)
 
@@ -469,8 +459,7 @@ describe('remote multiplayer server integration', () => {
         guestRejoinSocket.disconnect()
       }
     } finally {
-      host.disconnect()
-      guest.disconnect()
+      disconnectSockets(setup.host, setup.guest)
     }
   })
 
@@ -535,49 +524,26 @@ describe('remote multiplayer server integration', () => {
   })
 
   it('transfers host in-game when the host disconnects', async () => {
-    const host = await connectClient()
-    const guest = await connectClient()
-
+    const setup = await setupTwoPlayerRoom()
     try {
-      const createAck = await emitAck<SocketAck>(host, 'create-room', { playerName: 'Host' })
-      expect(createAck.ok).toBe(true)
-      if (!createAck.ok) {
-        return
-      }
-
-      const joinAck = await emitAck<SocketAck>(guest, 'join-room', {
-        roomCode: createAck.room.roomCode,
-        playerName: 'Guest'
-      })
-      expect(joinAck.ok).toBe(true)
-      if (!joinAck.ok) {
-        return
-      }
-
-      const inGamePromise = waitForRoomUpdated(guest, (room) => room.phase === 'in-game' && Boolean(room.gameState))
-      const startAck = await emitAck<SocketAck | { ok: false; error: string }>(host, 'start-game')
-      expect(startAck.ok).toBe(true)
-      await inGamePromise
-
-      const hostTransferredPromise = waitForRoomUpdated(guest, (room) => {
+      const hostTransferredPromise = waitForRoomUpdated(setup.guest, (room) => {
         if (room.phase !== 'in-game') {
           return false
         }
 
-        const guestPlayer = room.players.find((player) => player.id === joinAck.playerId)
+        const guestPlayer = room.players.find((player) => player.id === setup.joinAck.playerId)
         return Boolean(guestPlayer?.isHost)
       })
 
-      host.disconnect()
+      setup.host.disconnect()
 
       const transferredRoom = await hostTransferredPromise
-      const guestPlayer = transferredRoom.players.find((player) => player.id === joinAck.playerId)
+      const guestPlayer = transferredRoom.players.find((player) => player.id === setup.joinAck.playerId)
       expect(guestPlayer?.isHost).toBe(true)
       expect(transferredRoom.phase).toBe('in-game')
       expect(transferredRoom.gameState).toBeTruthy()
     } finally {
-      host.disconnect()
-      guest.disconnect()
+      disconnectSockets(setup.host, setup.guest)
     }
   })
 
