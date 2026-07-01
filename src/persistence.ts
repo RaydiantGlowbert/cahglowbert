@@ -25,7 +25,21 @@ export function loadPersistedState(): PersistedState {
   }
 
   try {
-    return JSON.parse(raw) as PersistedState
+    const parsed = JSON.parse(raw) as PersistedState
+    const gameState = parsed.gameState
+
+    if (!gameState) {
+      return { gameState: null, playerNamesInput: parsed.playerNamesInput ?? '' }
+    }
+
+    return {
+      ...parsed,
+      gameState: {
+        ...gameState,
+        roundHistory: Array.isArray(gameState.roundHistory) ? gameState.roundHistory : []
+      },
+      playerNamesInput: parsed.playerNamesInput ?? ''
+    }
   } catch {
     return { gameState: null, playerNamesInput: '' }
   }

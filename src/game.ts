@@ -15,6 +15,14 @@ export type Player = {
   hand: Card[]
 }
 
+export type RoundHistoryEntry = {
+  round: number
+  blackCardText: string
+  winningCardText: string
+  winnerId: string
+  winnerName: string
+}
+
 export type GameState = {
   players: Player[]
   judgeIndex: number
@@ -24,6 +32,7 @@ export type GameState = {
   submittedAnswers: Array<{ playerId: string; card: Card }>
   winnerId: string | null
   answeringPlayerId: string | null
+  roundHistory: RoundHistoryEntry[]
 }
 
 export const initialBlackCards: Card[] = blackCards
@@ -109,7 +118,8 @@ export function createInitialGameState(names: string[]): GameState {
     phase: 'waiting-for-answers',
     submittedAnswers: [],
     winnerId: null,
-    answeringPlayerId: getNextAnsweringPlayerId(players, judgeIndex, null)
+    answeringPlayerId: getNextAnsweringPlayerId(players, judgeIndex, null),
+    roundHistory: []
   }
 }
 
@@ -164,11 +174,24 @@ export function chooseWinner(state: GameState, winnerId: string): GameState {
     player.id === winnerId ? { ...player, score: player.score + 1 } : player
   )
 
+  const winningSubmission = state.submittedAnswers.find((answer) => answer.playerId === winnerId)
+  const nextRoundHistory: RoundHistoryEntry[] = [
+    ...state.roundHistory,
+    {
+      round: state.round,
+      blackCardText: state.blackCard?.text ?? '',
+      winningCardText: winningSubmission?.card.text ?? '',
+      winnerId,
+      winnerName: winner.name
+    }
+  ]
+
   return {
     ...state,
     players: updatedPlayers,
     winnerId,
-    phase: 'round-over'
+    phase: 'round-over',
+    roundHistory: nextRoundHistory
   }
 }
 

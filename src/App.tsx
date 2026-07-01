@@ -185,6 +185,23 @@ function App() {
                       ))}
                     </div>
                   </div>
+
+                  <div className="sidebar-card">
+                    <h3>Recent rounds</h3>
+                    <div className="history-stack">
+                      {gameState.roundHistory.length === 0 ? <p>No rounds finished yet.</p> : null}
+                      {gameState.roundHistory
+                        .slice(-5)
+                        .reverse()
+                        .map((entry) => (
+                          <div key={`${entry.round}-${entry.winnerId}`} className="history-item">
+                            <strong>Round {entry.round}: {entry.winnerName}</strong>
+                            <p>{entry.blackCardText}</p>
+                            <p>Winning card: {entry.winningCardText}</p>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
                 </aside>
               </div>
             </div>
