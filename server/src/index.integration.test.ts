@@ -741,6 +741,34 @@ describe('remote multiplayer server integration', () => {
     }
   })
 
+  it('deletes room when all players disconnect', async () => {
+    const setup = await setupTwoPlayerRoom({ startGame: false })
+
+    try {
+      setup.guest.disconnect()
+      setup.host.disconnect()
+
+      const rejoinClient = await connectClient()
+      try {
+        const rejoinAck = await emitAck<SocketAck>(rejoinClient, 'rejoin-room', {
+          roomCode: setup.createAck.room.roomCode,
+          sessionToken: setup.createAck.sessionToken
+        })
+
+        expect(rejoinAck.ok).toBe(false)
+        if (rejoinAck.ok) {
+          return
+        }
+
+        expect(rejoinAck.error).toBe('Room not found.')
+      } finally {
+        rejoinClient.disconnect()
+      }
+    } finally {
+      disconnectSockets(setup.host, setup.guest)
+    }
+  })
+
   it('transfers host in-game when the host disconnects', async () => {
     const setup = await setupTwoPlayerRoom()
     try {
