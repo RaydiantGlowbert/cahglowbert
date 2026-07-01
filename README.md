@@ -1,32 +1,98 @@
-# React + TypeScript + Vite
+# Cards Against Humanity (Custom Deck)
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+A browser-based Cards Against Humanity style game with:
 
-Currently, two official plugins are available:
+- Local mode
+- Remote multiplayer mode (Socket.IO)
+- Server-authoritative game flow
+- Custom black and white card decks
+- Deck validation and startup lock for invalid card data
+- Reconnect sessions and per-player hand privacy
+- Room persistence (file or Redis)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Requirements
 
-## React Compiler
+- Node.js 20+
+- npm 10+
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Quick Start (Local Dev)
 
-## Expanding the Oxlint configuration
+1. Install dependencies:
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+2. Copy env file:
+
+```bash
+cp .env.example .env
+```
+
+3. Run frontend + multiplayer server together:
+
+```bash
+npm run dev:all
+```
+
+4. Open frontend:
+
+- http://localhost:5173
+
+## Scripts
+
+- `npm run dev` -> Vite frontend
+- `npm run server:dev` -> multiplayer server
+- `npm run dev:all` -> frontend + server concurrently
+- `npm run test -- --run` -> run tests
+- `npm run build` -> production build
+
+## Environment Variables
+
+See `.env.example`.
+
+Important server settings:
+
+- `ROOM_STORE=file|redis`
+- `REDIS_URL=redis://...` when using Redis
+- `CORS_ORIGIN=https://your-frontend-domain`
+
+## Room Storage Backends
+
+The server supports two persistence modes:
+
+1. `file` (default)
+- Uses `server/data/rooms.json`
+- Good for local development and single-instance hosting
+
+2. `redis`
+- Uses `REDIS_URL`
+- Better for production durability and scaling
+
+If `ROOM_STORE` is omitted and `REDIS_URL` is set, Redis is used automatically.
+
+## Deployment Notes
+
+Recommended split deployment:
+
+1. Frontend: Vercel
+2. Server: Render / Fly.io / Railway / Azure / similar
+3. Storage: Managed Redis
+
+Set frontend env in Vercel:
+
+- `VITE_SERVER_URL=https://your-server-domain`
+
+Set server env in your backend host:
+
+- `PORT=3001` (or platform-assigned)
+- `CORS_ORIGIN=https://your-frontend-domain`
+- `ROOM_STORE=redis`
+- `REDIS_URL=redis://...`
+
+## Current Multiplayer Milestones
+
+- M1: Room create/join lobby flow
+- M2: Server-authoritative remote gameplay flow
+- M3: Reconnect sessions and per-player hand privacy
+- M4: Durable storage with Redis-capable room store and file fallback
