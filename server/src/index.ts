@@ -45,6 +45,7 @@ const roomStore = createRoomStore({
   filePath: ROOMS_STORE_PATH
 })
 const rooms = new Map<string, Room>()
+let bootstrapped = false
 
 function shuffleEntries<T>(items: T[]): T[] {
   const nextItems = [...items]
@@ -575,13 +576,59 @@ io.on('connection', (socket) => {
   })
 })
 
-async function bootstrap() {
+export async function bootstrap() {
+  if (bootstrapped) {
+    return
+  }
+
   const restoredRooms = await roomStore.load()
+  rooms.clear()
   hydrateRooms(restoredRooms)
 
-  httpServer.listen(PORT, () => {
-    console.log(`Multiplayer server listening on http://localhost:${PORT}`)
+  await new Promise<void>((resolve, reject) => {
+    httpServer.once('error', reject)
+    httpServer.listen(PORT, () => {
+      httpServer.off('error', reject)
+      console.log(`Multiplayer server listening on http://localhost:${PORT}`)
+      resolve()
+    })
   })
+
+  bootstrapped = true
 }
 
-void bootstrap()
+export async function shutdown() {
+  if (!bootstrapped) {
+    return
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    io.close((ioError) => {
+      if (ioError) {
+        reject(ioError)
+        return
+      }
+
+      if (!httpServer.listening) {
+        resolve()
+        return
+      }
+
+      httpServer.close((serverError) => {
+        if (serverError) {
+          reject(serverError)
+          return
+        }
+
+        resolve()
+      })
+    })
+  })
+
+  rooms.clear()
+  bootstrapped = false
+}
+
+if (process.env.NODE_ENV !== 'test') {
+  void bootstrap()
+}

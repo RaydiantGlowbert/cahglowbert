@@ -24,6 +24,18 @@ export type RoomStore = {
   save: (rooms: PersistedRoom[]) => Promise<void>
 }
 
+class MemoryRoomStore implements RoomStore {
+  private rooms: PersistedRoom[] = []
+
+  async load(): Promise<PersistedRoom[]> {
+    return [...this.rooms]
+  }
+
+  async save(rooms: PersistedRoom[]): Promise<void> {
+    this.rooms = [...rooms]
+  }
+}
+
 class FileRoomStore implements RoomStore {
   constructor(private readonly filePath: string) {}
 
@@ -101,6 +113,10 @@ export function createRoomStore(options: {
   filePath: string
 }): RoomStore {
   const normalizedMode = options.mode?.trim().toLowerCase()
+
+  if (normalizedMode === 'memory') {
+    return new MemoryRoomStore()
+  }
 
   if (normalizedMode === 'redis' && options.redisUrl) {
     return new RedisRoomStore(options.redisUrl)
