@@ -748,6 +748,51 @@ describe('remote multiplayer server integration', () => {
     }
   })
 
+  it('rejects choose-winner when round is not in judge phase', async () => {
+    const setup = await setupTwoPlayerRoom()
+    try {
+      const hostInGame = setup.hostInGame
+      const guestInGame = setup.guestInGame
+
+      expect(hostInGame).toBeTruthy()
+      expect(guestInGame).toBeTruthy()
+      if (!hostInGame || !guestInGame || !hostInGame.gameState) {
+        return
+      }
+
+      expect(hostInGame.gameState.phase).toBe('waiting-for-answers')
+
+      const hostPlayer = hostInGame.players.find((player) => player.id === setup.createAck.playerId)
+      const guestPlayer = guestInGame.players.find((player) => player.id === setup.joinAck.playerId)
+
+      expect(hostPlayer?.gamePlayerId).toBeTruthy()
+      expect(guestPlayer?.gamePlayerId).toBeTruthy()
+      if (!hostPlayer?.gamePlayerId || !guestPlayer?.gamePlayerId) {
+        return
+      }
+
+      const judgePlayerId = hostInGame.gameState.players[hostInGame.gameState.judgeIndex]?.id
+      expect(judgePlayerId).toBeTruthy()
+      if (!judgePlayerId) {
+        return
+      }
+
+      const judgeSocket = hostPlayer.gamePlayerId === judgePlayerId ? setup.host : setup.guest
+      const chooseAck = await emitAck<BoolAck>(judgeSocket, 'choose-winner', {
+        winnerId: hostPlayer.gamePlayerId
+      })
+
+      expect(chooseAck.ok).toBe(false)
+      if (chooseAck.ok) {
+        return
+      }
+
+      expect(chooseAck.error).toBe('Round is not ready for judging.')
+    } finally {
+      disconnectSockets(setup.host, setup.guest)
+    }
+  })
+
   it('allows in-game rejoin by session token and preserves hand privacy', async () => {
     const setup = await setupTwoPlayerRoom()
     try {

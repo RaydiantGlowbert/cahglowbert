@@ -531,6 +531,11 @@ io.on('connection', (socket) => {
         return
       }
 
+      if (room.gameState.phase !== 'waiting-for-judge') {
+        callback({ ok: false, error: 'Round is not ready for judging.' })
+        return
+      }
+
       if (!payload.winnerId) {
         callback({ ok: false, error: 'Winner is required.' })
         return
