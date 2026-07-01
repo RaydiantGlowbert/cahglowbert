@@ -557,7 +557,14 @@ io.on('connection', (socket) => {
         return
       }
 
-      const resolvedWinnerId = room.judgeAliasToPlayerId.get(payload.winnerId) ?? payload.winnerId
+      refreshJudgeAnonymization(room)
+
+      const resolvedWinnerId = room.judgeAliasToPlayerId.get(payload.winnerId)
+      if (!resolvedWinnerId) {
+        callback({ ok: false, error: 'Winner is invalid.' })
+        return
+      }
+
       const isSubmittedPlayer = room.gameState.submittedAnswers.some(
         (submittedAnswer) => submittedAnswer.playerId === resolvedWinnerId
       )

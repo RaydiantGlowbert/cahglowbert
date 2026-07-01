@@ -731,6 +731,16 @@ describe('remote multiplayer server integration', () => {
 
       expect(invalidPickAck.error).toBe('Winner is invalid.')
 
+      const rawPlayerPickAck = await emitAck<BoolAck>(judgeSocket, 'choose-winner', {
+        winnerId: answeringPlayerId
+      })
+      expect(rawPlayerPickAck.ok).toBe(false)
+      if (rawPlayerPickAck.ok) {
+        return
+      }
+
+      expect(rawPlayerPickAck.error).toBe('Winner is invalid.')
+
       const roundOverPromise = waitForRoomUpdated(
         judgeSocket,
         (room) => room.gameState?.phase === 'round-over' && Boolean(room.gameState.winnerId)
