@@ -1111,6 +1111,41 @@ describe('remote multiplayer server integration', () => {
     }
   })
 
+  it('rejects stale host start-game after host token rejoin takeover in lobby', async () => {
+    const host = await connectClient()
+    const guest = await connectClient()
+    const hostTakeover = await connectClient()
+
+    try {
+      const createAck = requireOkAck(await emitAck<SocketAck>(host, 'create-room', { playerName: 'Host' }))
+      requireOkAck(
+        await emitAck<SocketAck>(guest, 'join-room', {
+          roomCode: createAck.room.roomCode,
+          playerName: 'Guest'
+        })
+      )
+
+      const hostRejoinAck = await emitAck<SocketAck>(hostTakeover, 'rejoin-room', {
+        roomCode: createAck.room.roomCode,
+        sessionToken: createAck.sessionToken
+      })
+      expect(hostRejoinAck.ok).toBe(true)
+
+      const staleStartAck = await emitAck<SocketAck | { ok: false; error: string }>(host, 'start-game')
+      expect(staleStartAck.ok).toBe(false)
+      if (staleStartAck.ok) {
+        return
+      }
+
+      expect(staleStartAck.error).toBe('Session is no longer active.')
+
+      const activeStartAck = await emitAck<SocketAck | { ok: false; error: string }>(hostTakeover, 'start-game')
+      expect(activeStartAck.ok).toBe(true)
+    } finally {
+      disconnectSockets(host, guest, hostTakeover)
+    }
+  })
+
   it('rejects choose-winner when round is not in judge phase', async () => {
     const setup = await setupTwoPlayerRoom()
     try {
