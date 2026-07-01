@@ -401,15 +401,15 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
                 <div className="sidebar-card">
                   <h3>{isJudge ? 'Pick the winning answer' : 'Judge is deciding'}</h3>
                   <div className="answer-grid">
-                    {gameState.submittedAnswers.map((entry) => (
+                    {gameState.submittedAnswers.map((entry, index) => (
                       <button
-                        key={`${entry.playerId}-${entry.cards.map((card) => card.id).join('-')}`}
+                        key={`submission-${index + 1}-${entry.cards.map((card) => card.id).join('-')}`}
                         type="button"
                         className="answer-card"
                         onClick={() => chooseWinner(entry.playerId)}
                         disabled={!isJudge}
                       >
-                        <span className="card-label">Submission</span>
+                        <span className="card-label">Submission {index + 1}</span>
                         <strong>{entry.cards.map((card) => card.text).join(' / ')}</strong>
                       </button>
                     ))}
