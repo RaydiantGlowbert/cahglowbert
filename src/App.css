@@ -201,6 +201,52 @@ button:hover {
   margin: 0.8rem 0 0;
 }
 
+.remote-room-health {
+  margin-top: 0.9rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.6rem;
+}
+
+.remote-health-item {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 0.8rem;
+  background: rgba(15, 23, 42, 0.45);
+  padding: 0.55rem 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.remote-health-item span {
+  color: #cbd5e1;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.remote-health-item strong {
+  color: #f8fafc;
+  font-size: 0.95rem;
+}
+
+.remote-recovery-hint {
+  margin-top: 0.8rem;
+  border: 1px solid rgba(251, 191, 36, 0.45);
+  border-radius: 0.8rem;
+  background: rgba(120, 53, 15, 0.28);
+  padding: 0.7rem 0.8rem;
+}
+
+.remote-recovery-hint strong {
+  color: #fbbf24;
+}
+
+.remote-recovery-hint p {
+  margin-top: 0.3rem;
+  color: #fde68a;
+}
+
 .table-topbar {
   display: flex;
   justify-content: space-between;

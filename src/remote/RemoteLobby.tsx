@@ -155,6 +155,11 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
   const isActiveAnsweringPlayer = Boolean(
     gameState && playerInRoom?.gamePlayerId && gameState.answeringPlayerId === playerInRoom.gamePlayerId
   )
+  const connectedPlayersCount = currentRoom?.players.filter((player) => player.connected).length ?? 0
+  const disconnectedPlayersCount = currentRoom?.players.filter((player) => !player.connected).length ?? 0
+  const shouldShowRecoveryHint =
+    errorMessage === 'This session was replaced by a newer connection. Rejoin from this device.' ||
+    errorMessage === 'Saved session expired. Rejoin with room code and player name.'
 
   useEffect(() => {
     setSelectedCardIds([])
@@ -299,7 +304,34 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
         <div className="status-pill">Endpoint: <strong>{SERVER_URL}</strong></div>
       </div>
 
+      {currentRoom ? (
+        <div className="remote-room-health">
+          <div className="remote-health-item">
+            <span>Room</span>
+            <strong>{currentRoom.roomCode}</strong>
+          </div>
+          <div className="remote-health-item">
+            <span>You</span>
+            <strong>{playerInRoom?.isHost ? 'Host' : 'Player'}</strong>
+          </div>
+          <div className="remote-health-item">
+            <span>Connected</span>
+            <strong>{connectedPlayersCount}/15</strong>
+          </div>
+          <div className="remote-health-item">
+            <span>Disconnected</span>
+            <strong>{disconnectedPlayersCount}</strong>
+          </div>
+        </div>
+      ) : null}
+
       {errorMessage ? <p className="setup-error-text">{errorMessage}</p> : null}
+      {shouldShowRecoveryHint ? (
+        <div className="remote-recovery-hint" role="status" aria-live="polite">
+          <strong>Recovery tip</strong>
+          <p>Enter your player name and room code, then use Join room to continue from this device.</p>
+        </div>
+      ) : null}
 
       {!currentRoom ? (
         <div className="remote-grid">
