@@ -1,7 +1,6 @@
 import cors from 'cors'
 import express from 'express'
 import { randomUUID } from 'crypto'
-import fs from 'fs'
 import { createServer } from 'http'
 import path from 'path'
 import { Server } from 'socket.io'
@@ -12,6 +11,7 @@ import {
   submitAnswer,
   type GameState
 } from '../../src/game'
+import { createRoomStore, type PersistedRoom } from './storage'
 import type { RoomPlayer, RoomSnapshot, SocketAck } from './types'
 
 const PORT = Number(process.env.PORT ?? 3001)
@@ -36,24 +36,15 @@ type Room = {
   gameState: GameState | null
 }
 
-type PersistedRoom = {
-  roomCode: string
-  players: Array<Omit<RoomPlayerState, 'socketId' | 'connected'> & { connected: boolean }>
-  phase: 'lobby' | 'in-game'
-  gameState: GameState | null
-}
+const roomStore = createRoomStore({
+  mode: process.env.ROOM_STORE,
+  redisUrl: process.env.REDIS_URL,
+  filePath: ROOMS_STORE_PATH
+})
+const rooms = new Map<string, Room>()
 
-function ensureStoreDirectory() {
-  const directory = path.dirname(ROOMS_STORE_PATH)
-  if (!fs.existsSync(directory)) {
-    fs.mkdirSync(directory, { recursive: true })
-  }
-}
-
-function persistRoomsToDisk(rooms: Map<string, Room>) {
-  ensureStoreDirectory()
-
-  const payload: PersistedRoom[] = [...rooms.values()].map((room) => ({
+function serializeRooms(): PersistedRoom[] {
+  return [...rooms.values()].map((room) => ({
     roomCode: room.roomCode,
     phase: room.phase,
     gameState: room.gameState,
@@ -66,49 +57,33 @@ function persistRoomsToDisk(rooms: Map<string, Room>) {
       connected: player.connected
     }))
   }))
-
-  fs.writeFileSync(ROOMS_STORE_PATH, JSON.stringify(payload, null, 2), 'utf8')
 }
 
-function loadRoomsFromDisk(): Map<string, Room> {
-  try {
-    if (!fs.existsSync(ROOMS_STORE_PATH)) {
-      return new Map<string, Room>()
-    }
+function persistRooms() {
+  void roomStore.save(serializeRooms()).catch((error) => {
+    console.error('Failed to persist rooms', error)
+  })
+}
 
-    const raw = fs.readFileSync(ROOMS_STORE_PATH, 'utf8')
-    if (!raw.trim()) {
-      return new Map<string, Room>()
-    }
-
-    const parsed = JSON.parse(raw) as PersistedRoom[]
-    const recoveredRooms = new Map<string, Room>()
-
-    for (const room of parsed) {
-      const players = new Map<string, RoomPlayerState>()
-      for (const player of room.players) {
-        players.set(player.id, {
-          ...player,
-          connected: false,
-          socketId: undefined
-        })
-      }
-
-      recoveredRooms.set(room.roomCode, {
-        roomCode: room.roomCode,
-        phase: room.phase,
-        gameState: room.gameState,
-        players
+function hydrateRooms(serializedRooms: PersistedRoom[]) {
+  for (const room of serializedRooms) {
+    const players = new Map<string, RoomPlayerState>()
+    for (const player of room.players) {
+      players.set(player.id, {
+        ...player,
+        connected: false,
+        socketId: undefined
       })
     }
 
-    return recoveredRooms
-  } catch {
-    return new Map<string, Room>()
+    rooms.set(room.roomCode, {
+      roomCode: room.roomCode,
+      phase: room.phase,
+      gameState: room.gameState,
+      players
+    })
   }
 }
-
-const rooms = loadRoomsFromDisk()
 
 const app = express()
 app.use(
@@ -224,7 +199,7 @@ function leaveCurrentRoom(socketId: string, roomCode: string | undefined, remove
 
   if (room.players.size === 0 || [...room.players.values()].every((player) => !player.connected)) {
     rooms.delete(roomCode)
-    persistRoomsToDisk(rooms)
+    persistRooms()
     return
   }
 
@@ -241,7 +216,7 @@ function leaveCurrentRoom(socketId: string, roomCode: string | undefined, remove
     }
   }
 
-  persistRoomsToDisk(rooms)
+  persistRooms()
   broadcastRoom(room)
 }
 
@@ -290,7 +265,7 @@ io.on('connection', (socket) => {
 
     room.players.set(player.id, player)
     rooms.set(roomCode, room)
-    persistRoomsToDisk(rooms)
+    persistRooms()
 
     socket.data.roomCode = roomCode
     socket.data.playerId = player.id
@@ -343,7 +318,7 @@ io.on('connection', (socket) => {
       const player = createPlayer(playerName, false, socket.id)
 
       room.players.set(player.id, player)
-      persistRoomsToDisk(rooms)
+      persistRooms()
       socket.data.roomCode = roomCode
       socket.data.playerId = player.id
       void socket.join(roomCode)
@@ -388,7 +363,7 @@ io.on('connection', (socket) => {
       matchingPlayer.socketId = socket.id
       matchingPlayer.connected = true
       room.players.set(matchingPlayer.id, matchingPlayer)
-      persistRoomsToDisk(rooms)
+      persistRooms()
 
       socket.data.roomCode = roomCode
       socket.data.playerId = matchingPlayer.id
@@ -443,7 +418,7 @@ io.on('connection', (socket) => {
       assignGamePlayerIds(room)
 
     room.phase = 'in-game'
-    persistRoomsToDisk(rooms)
+    persistRooms()
 
       callback({
         ok: true,
@@ -476,7 +451,7 @@ io.on('connection', (socket) => {
 
       const nextState = submitAnswer(room.gameState, requester.gamePlayerId, payload.cardIds ?? [])
       room.gameState = nextState
-      persistRoomsToDisk(rooms)
+      persistRooms()
 
       callback({ ok: true })
       broadcastRoom(room)
@@ -511,7 +486,7 @@ io.on('connection', (socket) => {
 
       const nextState = chooseWinner(room.gameState, payload.winnerId)
       room.gameState = nextState
-      persistRoomsToDisk(rooms)
+      persistRooms()
 
       callback({ ok: true })
       broadcastRoom(room)
@@ -539,7 +514,7 @@ io.on('connection', (socket) => {
     }
 
     room.gameState = nextRound(room.gameState)
-    persistRoomsToDisk(rooms)
+    persistRooms()
     callback({ ok: true })
     broadcastRoom(room)
   })
@@ -549,6 +524,13 @@ io.on('connection', (socket) => {
   })
 })
 
-httpServer.listen(PORT, () => {
-  console.log(`Multiplayer server listening on http://localhost:${PORT}`)
-})
+async function bootstrap() {
+  const restoredRooms = await roomStore.load()
+  hydrateRooms(restoredRooms)
+
+  httpServer.listen(PORT, () => {
+    console.log(`Multiplayer server listening on http://localhost:${PORT}`)
+  })
+}
+
+void bootstrap()
