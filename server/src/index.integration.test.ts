@@ -1082,6 +1082,35 @@ describe('remote multiplayer server integration', () => {
     }
   })
 
+  it('rejects actions from stale socket after token rejoin takeover', async () => {
+    const setup = await setupTwoPlayerRoom()
+    const attacker = await connectClient()
+
+    try {
+      const takeoverAck = await emitAck<SocketAck>(attacker, 'rejoin-room', {
+        roomCode: setup.createAck.room.roomCode,
+        sessionToken: setup.joinAck.sessionToken
+      })
+
+      expect(takeoverAck.ok).toBe(true)
+      if (!takeoverAck.ok) {
+        return
+      }
+
+      const staleActionAck = await emitAck<BoolAck>(setup.guest, 'submit-answer', {
+        cardIds: []
+      })
+      expect(staleActionAck.ok).toBe(false)
+      if (staleActionAck.ok) {
+        return
+      }
+
+      expect(staleActionAck.error).toBe('Session is no longer active.')
+    } finally {
+      disconnectSockets(setup.host, setup.guest, attacker)
+    }
+  })
+
   it('rejects choose-winner when round is not in judge phase', async () => {
     const setup = await setupTwoPlayerRoom()
     try {

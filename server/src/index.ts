@@ -458,7 +458,12 @@ io.on('connection', (socket) => {
     }
 
       const requester = room.players.get(socket.data.playerId as string | undefined ?? '')
-    if (!requester?.isHost) {
+      if (!requester || !requester.connected || requester.socketId !== socket.id) {
+        callback({ ok: false, error: 'Session is no longer active.' })
+        return
+      }
+
+    if (!requester.isHost) {
       callback({ ok: false, error: 'Only the host can start the game.' })
       return
     }
@@ -506,7 +511,12 @@ io.on('connection', (socket) => {
       }
 
       const requester = room.players.get(socket.data.playerId as string | undefined ?? '')
-      if (!requester?.gamePlayerId) {
+      if (!requester || !requester.connected || requester.socketId !== socket.id) {
+        callback({ ok: false, error: 'Session is no longer active.' })
+        return
+      }
+
+      if (!requester.gamePlayerId) {
         callback({ ok: false, error: 'Player not found in active game.' })
         return
       }
@@ -541,8 +551,13 @@ io.on('connection', (socket) => {
       }
 
       const requester = room.players.get(socket.data.playerId as string | undefined ?? '')
+      if (!requester || !requester.connected || requester.socketId !== socket.id) {
+        callback({ ok: false, error: 'Session is no longer active.' })
+        return
+      }
+
       const judgePlayerId = room.gameState.players[room.gameState.judgeIndex]?.id
-      if (!requester?.gamePlayerId || requester.gamePlayerId !== judgePlayerId) {
+      if (!requester.gamePlayerId || requester.gamePlayerId !== judgePlayerId) {
         callback({ ok: false, error: 'Only the judge can pick a winner.' })
         return
       }
@@ -592,8 +607,8 @@ io.on('connection', (socket) => {
     }
 
     const requester = room.players.get(socket.data.playerId as string | undefined ?? '')
-    if (!requester) {
-      callback({ ok: false, error: 'Player not found in room.' })
+    if (!requester || !requester.connected || requester.socketId !== socket.id) {
+      callback({ ok: false, error: 'Session is no longer active.' })
       return
     }
 
