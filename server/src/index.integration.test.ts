@@ -765,6 +765,56 @@ describe('remote multiplayer server integration', () => {
     }
   })
 
+  it('transfers host to connected player when another player is disconnected', async () => {
+    const host = await connectClient()
+    const guestOne = await connectClient()
+    const guestTwo = await connectClient()
+
+    try {
+      const createAck = requireOkAck(await emitAck<SocketAck>(host, 'create-room', { playerName: 'Host' }))
+      const joinOneAck = requireOkAck(
+        await emitAck<SocketAck>(guestOne, 'join-room', {
+          roomCode: createAck.room.roomCode,
+          playerName: 'Guest One'
+        })
+      )
+      const joinTwoAck = requireOkAck(
+        await emitAck<SocketAck>(guestTwo, 'join-room', {
+          roomCode: createAck.room.roomCode,
+          playerName: 'Guest Two'
+        })
+      )
+
+      const guestOneDisconnectedPromise = waitForRoomUpdated(host, (room) => {
+        const guestOnePlayer = room.players.find((player) => player.id === joinOneAck.playerId)
+        return Boolean(guestOnePlayer && !guestOnePlayer.connected)
+      })
+
+      guestOne.disconnect()
+      await guestOneDisconnectedPromise
+
+      const hostTransferredPromise = waitForRoomUpdated(guestTwo, (room) => {
+        const guestOnePlayer = room.players.find((player) => player.id === joinOneAck.playerId)
+        const guestTwoPlayer = room.players.find((player) => player.id === joinTwoAck.playerId)
+
+        return Boolean(guestOnePlayer && !guestOnePlayer.connected && guestTwoPlayer?.isHost)
+      })
+
+      host.disconnect()
+
+      const transferredRoom = await hostTransferredPromise
+      const guestOnePlayer = transferredRoom.players.find((player) => player.id === joinOneAck.playerId)
+      const guestTwoPlayer = transferredRoom.players.find((player) => player.id === joinTwoAck.playerId)
+
+      expect(guestOnePlayer?.connected).toBe(false)
+      expect(guestTwoPlayer?.connected).toBe(true)
+      expect(guestTwoPlayer?.isHost).toBe(true)
+      expect(guestOnePlayer?.isHost).toBe(false)
+    } finally {
+      disconnectSockets(host, guestOne, guestTwo)
+    }
+  })
+
   it(
     'shows only anonymous aliases to judge with multiple submissions',
     async () => {
