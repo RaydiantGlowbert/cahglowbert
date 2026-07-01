@@ -1004,6 +1004,55 @@ describe('remote multiplayer server integration', () => {
     }
   })
 
+  it('transfers host in lobby when host explicitly leaves the room', async () => {
+    const host = await connectClient()
+    const guestOne = await connectClient()
+    const guestTwo = await connectClient()
+
+    try {
+      const createAck = requireOkAck(await emitAck<SocketAck>(host, 'create-room', { playerName: 'Host' }))
+      const joinOneAck = requireOkAck(
+        await emitAck<SocketAck>(guestOne, 'join-room', {
+          roomCode: createAck.room.roomCode,
+          playerName: 'Guest One'
+        })
+      )
+      const joinTwoAck = requireOkAck(
+        await emitAck<SocketAck>(guestTwo, 'join-room', {
+          roomCode: createAck.room.roomCode,
+          playerName: 'Guest Two'
+        })
+      )
+
+      const hostTransferredPromise = waitForRoomUpdated(guestOne, (room) => {
+        if (room.phase !== 'lobby') {
+          return false
+        }
+
+        const guestOnePlayer = room.players.find((player) => player.id === joinOneAck.playerId)
+        const hostPlayer = room.players.find((player) => player.id === createAck.playerId)
+        return Boolean(guestOnePlayer?.isHost && !hostPlayer)
+      })
+
+      host.emit('leave-room')
+
+      const transferredRoom = await hostTransferredPromise
+      const transferredHost = transferredRoom.players.find((player) => player.id === joinOneAck.playerId)
+      const otherGuest = transferredRoom.players.find((player) => player.id === joinTwoAck.playerId)
+
+      expect(transferredHost?.isHost).toBe(true)
+      expect(otherGuest?.isHost).toBe(false)
+
+      const startByNonHost = await emitAck<SocketAck | { ok: false; error: string }>(guestTwo, 'start-game')
+      expect(startByNonHost.ok).toBe(false)
+
+      const startByNewHost = await emitAck<SocketAck | { ok: false; error: string }>(guestOne, 'start-game')
+      expect(startByNewHost.ok).toBe(true)
+    } finally {
+      disconnectSockets(host, guestOne, guestTwo)
+    }
+  })
+
   it('deletes room when all players disconnect', async () => {
     const setup = await setupTwoPlayerRoom({ startGame: false })
 
