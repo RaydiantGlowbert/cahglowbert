@@ -597,6 +597,11 @@ io.on('connection', (socket) => {
       return
     }
 
+    if (!requester.isHost) {
+      callback({ ok: false, error: 'Only the host can advance rounds.' })
+      return
+    }
+
     if (room.gameState.phase !== 'round-over') {
       callback({ ok: false, error: 'Round is not ready to advance.' })
       return

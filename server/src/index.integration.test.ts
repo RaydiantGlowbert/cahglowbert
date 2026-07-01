@@ -846,6 +846,100 @@ describe('remote multiplayer server integration', () => {
     }
   })
 
+  it('allows only host to advance to next round', async () => {
+    const setup = await setupTwoPlayerRoom()
+
+    try {
+      const hostInGame = setup.hostInGame
+      const guestInGame = setup.guestInGame
+
+      expect(hostInGame).toBeTruthy()
+      expect(guestInGame).toBeTruthy()
+      if (!hostInGame || !guestInGame || !hostInGame.gameState || !guestInGame.gameState) {
+        return
+      }
+
+      const hostPlayer = hostInGame.players.find((player) => player.id === setup.createAck.playerId)
+      const guestPlayer = guestInGame.players.find((player) => player.id === setup.joinAck.playerId)
+
+      expect(hostPlayer?.gamePlayerId).toBeTruthy()
+      expect(guestPlayer?.gamePlayerId).toBeTruthy()
+      if (!hostPlayer?.gamePlayerId || !guestPlayer?.gamePlayerId) {
+        return
+      }
+
+      const judgePlayerId = hostInGame.gameState.players[hostInGame.gameState.judgeIndex]?.id
+      const answeringPlayerId = hostInGame.gameState.answeringPlayerId
+      expect(judgePlayerId).toBeTruthy()
+      expect(answeringPlayerId).toBeTruthy()
+      if (!judgePlayerId || !answeringPlayerId) {
+        return
+      }
+
+      const judgeSocket = hostPlayer.gamePlayerId === judgePlayerId ? setup.host : setup.guest
+      const answeringSocket = hostPlayer.gamePlayerId === answeringPlayerId ? setup.host : setup.guest
+      const nonHostSocket = setup.guest
+      const answeringRoom = answeringSocket === setup.host ? hostInGame : guestInGame
+      const answeringHand = answeringRoom.gameState.players.find((player) => player.id === answeringPlayerId)?.hand
+
+      expect(answeringHand?.length).toBeGreaterThan(0)
+      if (!answeringHand || answeringHand.length === 0) {
+        return
+      }
+
+      const judgeViewPromise = waitForRoomUpdated(
+        judgeSocket,
+        (room) => room.gameState?.phase === 'waiting-for-judge' && room.gameState.submittedAnswers.length === 1
+      )
+
+      const submitAck = await emitAck<BoolAck>(answeringSocket, 'submit-answer', {
+        cardIds: [answeringHand[0].id]
+      })
+      expect(submitAck.ok).toBe(true)
+
+      const judgeView = await judgeViewPromise
+      const winnerAlias = judgeView.gameState?.submittedAnswers[0]?.playerId
+      expect(winnerAlias).toBeTruthy()
+      if (!winnerAlias) {
+        return
+      }
+
+      const roundOverPromise = waitForRoomUpdated(
+        setup.host,
+        (room) => room.gameState?.phase === 'round-over' && Boolean(room.gameState.winnerId)
+      )
+
+      const chooseAck = await emitAck<BoolAck>(judgeSocket, 'choose-winner', {
+        winnerId: winnerAlias
+      })
+      expect(chooseAck.ok).toBe(true)
+
+      await roundOverPromise
+
+      const nonHostNextRoundAck = await emitAck<BoolAck>(nonHostSocket, 'next-round')
+      expect(nonHostNextRoundAck.ok).toBe(false)
+      if (nonHostNextRoundAck.ok) {
+        return
+      }
+
+      expect(nonHostNextRoundAck.error).toBe('Only the host can advance rounds.')
+
+      const nextRoundViewPromise = waitForRoomUpdated(
+        setup.host,
+        (room) => room.gameState?.phase === 'waiting-for-answers' && room.gameState.round === 2
+      )
+
+      const hostNextRoundAck = await emitAck<BoolAck>(setup.host, 'next-round')
+      expect(hostNextRoundAck.ok).toBe(true)
+
+      const nextRoundView = await nextRoundViewPromise
+      expect(nextRoundView.gameState?.round).toBe(2)
+      expect(nextRoundView.gameState?.phase).toBe('waiting-for-answers')
+    } finally {
+      disconnectSockets(setup.host, setup.guest)
+    }
+  })
+
   it('rejects join-room when game is already in progress', async () => {
     const setup = await setupTwoPlayerRoom()
     const newcomer = await connectClient()
