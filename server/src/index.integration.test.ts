@@ -1082,6 +1082,47 @@ describe('remote multiplayer server integration', () => {
     }
   })
 
+  it('marks in-game leave-room player disconnected and allows token rejoin', async () => {
+    const setup = await setupTwoPlayerRoom()
+
+    try {
+      const guestDisconnectedPromise = waitForRoomUpdated(setup.host, (room) => {
+        const guestEntry = room.players.find((player) => player.id === setup.joinAck.playerId)
+        return Boolean(guestEntry && !guestEntry.connected)
+      })
+
+      setup.guest.emit('leave-room')
+
+      const hostViewAfterLeave = await guestDisconnectedPromise
+      const guestEntryAfterLeave = hostViewAfterLeave.players.find((player) => player.id === setup.joinAck.playerId)
+
+      expect(hostViewAfterLeave.phase).toBe('in-game')
+      expect(hostViewAfterLeave.players.some((player) => player.id === setup.joinAck.playerId)).toBe(true)
+      expect(guestEntryAfterLeave?.connected).toBe(false)
+
+      const rejoinClient = await connectClient()
+      try {
+        const rejoinAck = await emitAck<SocketAck>(rejoinClient, 'rejoin-room', {
+          roomCode: setup.createAck.room.roomCode,
+          sessionToken: setup.joinAck.sessionToken
+        })
+
+        expect(rejoinAck.ok).toBe(true)
+        if (!rejoinAck.ok) {
+          return
+        }
+
+        const guestAfterRejoin = rejoinAck.room.players.find((player) => player.id === setup.joinAck.playerId)
+        expect(rejoinAck.room.phase).toBe('in-game')
+        expect(guestAfterRejoin?.connected).toBe(true)
+      } finally {
+        rejoinClient.disconnect()
+      }
+    } finally {
+      disconnectSockets(setup.host, setup.guest)
+    }
+  })
+
   it('rejects actions from stale socket after token rejoin takeover', async () => {
     const setup = await setupTwoPlayerRoom()
     const attacker = await connectClient()

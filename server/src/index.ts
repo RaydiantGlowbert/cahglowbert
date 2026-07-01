@@ -438,7 +438,11 @@ io.on('connection', (socket) => {
   )
 
   socket.on('leave-room', () => {
-    leaveCurrentRoom(socket.id, socket.data.roomCode, true)
+    const roomCode = socket.data.roomCode as string | undefined
+    const room = roomCode ? rooms.get(roomCode) : undefined
+    const removePlayer = room?.phase !== 'in-game'
+
+    leaveCurrentRoom(socket.id, roomCode, removePlayer)
     socket.data.roomCode = undefined
     socket.data.playerId = undefined
   })
