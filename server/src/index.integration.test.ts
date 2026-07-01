@@ -1187,6 +1187,115 @@ describe('remote multiplayer server integration', () => {
     }
   })
 
+  it('rejects stale host choose-winner and next-round after in-game token takeover', async () => {
+    const setup = await setupTwoPlayerRoom()
+    const hostTakeover = await connectClient()
+
+    try {
+      const hostRejoinAck = await emitAck<SocketAck>(hostTakeover, 'rejoin-room', {
+        roomCode: setup.createAck.room.roomCode,
+        sessionToken: setup.createAck.sessionToken
+      })
+      expect(hostRejoinAck.ok).toBe(true)
+      if (!hostRejoinAck.ok) {
+        return
+      }
+
+      const hostInGame = setup.hostInGame
+      const guestInGame = setup.guestInGame
+
+      expect(hostInGame).toBeTruthy()
+      expect(guestInGame).toBeTruthy()
+      if (!hostInGame || !guestInGame || !hostInGame.gameState) {
+        return
+      }
+
+      const hostPlayer = hostInGame.players.find((player) => player.id === setup.createAck.playerId)
+      const guestPlayer = guestInGame.players.find((player) => player.id === setup.joinAck.playerId)
+
+      expect(hostPlayer?.gamePlayerId).toBeTruthy()
+      expect(guestPlayer?.gamePlayerId).toBeTruthy()
+      if (!hostPlayer?.gamePlayerId || !guestPlayer?.gamePlayerId) {
+        return
+      }
+
+      const answeringPlayerId = hostInGame.gameState.answeringPlayerId
+      expect(answeringPlayerId).toBeTruthy()
+      if (!answeringPlayerId) {
+        return
+      }
+
+      const answeringSocket = hostPlayer.gamePlayerId === answeringPlayerId ? setup.host : setup.guest
+      const answeringRoom = answeringSocket === setup.host ? hostInGame : guestInGame
+      const answeringHand = answeringRoom.gameState.players.find((player) => player.id === answeringPlayerId)?.hand
+
+      expect(answeringHand?.length).toBeGreaterThan(0)
+      if (!answeringHand || answeringHand.length === 0) {
+        return
+      }
+
+      const judgeViewPromise = waitForRoomUpdated(
+        hostTakeover,
+        (room) => room.gameState?.phase === 'waiting-for-judge' && room.gameState.submittedAnswers.length === 1
+      )
+
+      const submitAck = await emitAck<BoolAck>(answeringSocket, 'submit-answer', {
+        cardIds: [answeringHand[0].id]
+      })
+      expect(submitAck.ok).toBe(true)
+
+      const judgeView = await judgeViewPromise
+      const winnerAlias = judgeView.gameState?.submittedAnswers[0]?.playerId
+      expect(winnerAlias).toBeTruthy()
+      if (!winnerAlias) {
+        return
+      }
+
+      const staleChooseAck = await emitAck<BoolAck>(setup.host, 'choose-winner', {
+        winnerId: winnerAlias
+      })
+      expect(staleChooseAck.ok).toBe(false)
+      if (staleChooseAck.ok) {
+        return
+      }
+
+      expect(staleChooseAck.error).toBe('Session is no longer active.')
+
+      const roundOverPromise = waitForRoomUpdated(
+        hostTakeover,
+        (room) => room.gameState?.phase === 'round-over' && Boolean(room.gameState.winnerId)
+      )
+
+      const activeChooseAck = await emitAck<BoolAck>(hostTakeover, 'choose-winner', {
+        winnerId: winnerAlias
+      })
+      expect(activeChooseAck.ok).toBe(true)
+
+      await roundOverPromise
+
+      const staleNextRoundAck = await emitAck<BoolAck>(setup.host, 'next-round')
+      expect(staleNextRoundAck.ok).toBe(false)
+      if (staleNextRoundAck.ok) {
+        return
+      }
+
+      expect(staleNextRoundAck.error).toBe('Session is no longer active.')
+
+      const nextRoundPromise = waitForRoomUpdated(
+        hostTakeover,
+        (room) => room.gameState?.phase === 'waiting-for-answers' && room.gameState.round === 2
+      )
+
+      const activeNextRoundAck = await emitAck<BoolAck>(hostTakeover, 'next-round')
+      expect(activeNextRoundAck.ok).toBe(true)
+
+      const nextRoundView = await nextRoundPromise
+      expect(nextRoundView.gameState?.round).toBe(2)
+    } finally {
+      disconnectSockets(setup.host, setup.guest, hostTakeover)
+    }
+  })
+
   it('rejects choose-winner when round is not in judge phase', async () => {
     const setup = await setupTwoPlayerRoom()
     try {
