@@ -417,6 +417,80 @@ describe('remote multiplayer server integration', () => {
     }
   })
 
+  it('rejects case-insensitive duplicate player names for connected players', async () => {
+    const sockets: Socket[] = []
+
+    try {
+      const host = await connectClient()
+      sockets.push(host)
+
+      const createAck = requireOkAck(await emitAck<SocketAck>(host, 'create-room', { playerName: 'Host' }))
+
+      const guestOne = await connectClient()
+      sockets.push(guestOne)
+      const joinOneAck = await emitAck<SocketAck>(guestOne, 'join-room', {
+        roomCode: createAck.room.roomCode,
+        playerName: 'Guest'
+      })
+      expect(joinOneAck.ok).toBe(true)
+
+      const guestTwo = await connectClient()
+      sockets.push(guestTwo)
+      const joinTwoAck = await emitAck<SocketAck>(guestTwo, 'join-room', {
+        roomCode: createAck.room.roomCode,
+        playerName: 'gUeSt'
+      })
+
+      expect(joinTwoAck.ok).toBe(false)
+      if (joinTwoAck.ok) {
+        return
+      }
+
+      expect(joinTwoAck.error).toBe('That player name is already in this room.')
+    } finally {
+      disconnectSockets(...sockets)
+    }
+  })
+
+  it('allows reusing a player name after that player disconnects', async () => {
+    const sockets: Socket[] = []
+
+    try {
+      const host = await connectClient()
+      sockets.push(host)
+
+      const createAck = requireOkAck(await emitAck<SocketAck>(host, 'create-room', { playerName: 'Host' }))
+
+      const guestOne = await connectClient()
+      sockets.push(guestOne)
+      const joinOneAck = requireOkAck(
+        await emitAck<SocketAck>(guestOne, 'join-room', {
+          roomCode: createAck.room.roomCode,
+          playerName: 'Guest'
+        })
+      )
+
+      const disconnectedGuestSeenByHost = waitForRoomUpdated(host, (room) => {
+        const guest = room.players.find((player) => player.id === joinOneAck.playerId)
+        return Boolean(guest && !guest.connected)
+      })
+
+      guestOne.disconnect()
+      await disconnectedGuestSeenByHost
+
+      const replacementGuest = await connectClient()
+      sockets.push(replacementGuest)
+      const replacementJoinAck = await emitAck<SocketAck>(replacementGuest, 'join-room', {
+        roomCode: createAck.room.roomCode,
+        playerName: 'gUeSt'
+      })
+
+      expect(replacementJoinAck.ok).toBe(true)
+    } finally {
+      disconnectSockets(...sockets)
+    }
+  })
+
   it(
     'keeps judge submissions anonymous and resolves winner aliases server-side',
     async () => {
