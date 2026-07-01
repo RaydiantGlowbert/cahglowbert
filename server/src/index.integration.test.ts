@@ -820,6 +820,22 @@ describe('remote multiplayer server integration', () => {
     }
   })
 
+  it('rejects start-game when room is already in-game', async () => {
+    const setup = await setupTwoPlayerRoom()
+
+    try {
+      const restartAck = await emitAck<SocketAck | { ok: false; error: string }>(setup.host, 'start-game')
+      expect(restartAck.ok).toBe(false)
+      if (restartAck.ok) {
+        return
+      }
+
+      expect(restartAck.error).toBe('Game has already started.')
+    } finally {
+      disconnectSockets(setup.host, setup.guest)
+    }
+  })
+
   it('rejects choose-winner when round is not in judge phase', async () => {
     const setup = await setupTwoPlayerRoom()
     try {

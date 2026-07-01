@@ -447,6 +447,11 @@ io.on('connection', (socket) => {
       return
     }
 
+    if (room.phase !== 'lobby') {
+      callback({ ok: false, error: 'Game has already started.' })
+      return
+    }
+
       const requester = room.players.get(socket.data.playerId as string | undefined ?? '')
     if (!requester?.isHost) {
       callback({ ok: false, error: 'Only the host can start the game.' })
