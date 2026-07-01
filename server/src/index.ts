@@ -18,7 +18,10 @@ import type { RoomPlayer, RoomSnapshot, SocketAck } from './types'
 const PORT = Number(process.env.PORT ?? 3001)
 const MAX_PLAYERS = 15
 const ROOM_CODE_LENGTH = 6
+const ACTION_ACK_CACHE_LIMIT = 64
 const ROOMS_STORE_PATH = path.resolve(process.cwd(), 'server', 'data', 'rooms.json')
+
+type ActionAck = SocketAck | { ok: true } | { ok: false; error: string }
 
 type RoomPlayerState = {
   id: string
@@ -28,6 +31,7 @@ type RoomPlayerState = {
   sessionToken: string
   socketId?: string
   connected: boolean
+  actionAckCache: Map<string, ActionAck>
 }
 
 type Room = {
@@ -87,7 +91,8 @@ function hydrateRooms(serializedRooms: PersistedRoom[]) {
       players.set(player.id, {
         ...player,
         connected: false,
-        socketId: undefined
+        socketId: undefined,
+        actionAckCache: new Map()
       })
     }
 
@@ -99,6 +104,51 @@ function hydrateRooms(serializedRooms: PersistedRoom[]) {
       judgeAliasToPlayerId: new Map(),
       anonymizedSubmittedAnswers: []
     })
+  }
+}
+
+function readActionId(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== 'object') {
+    return undefined
+  }
+
+  const actionId = (payload as { actionId?: unknown }).actionId
+  if (typeof actionId !== 'string') {
+    return undefined
+  }
+
+  const normalizedActionId = actionId.trim()
+  return normalizedActionId.length > 0 ? normalizedActionId : undefined
+}
+
+function getCachedActionAck<TAck extends ActionAck>(
+  requester: RoomPlayerState,
+  eventName: string,
+  payload: unknown
+): TAck | undefined {
+  const actionId = readActionId(payload)
+  if (!actionId) {
+    return undefined
+  }
+
+  return requester.actionAckCache.get(`${eventName}:${actionId}`) as TAck | undefined
+}
+
+function cacheActionAck(requester: RoomPlayerState, eventName: string, payload: unknown, ack: ActionAck) {
+  const actionId = readActionId(payload)
+  if (!actionId) {
+    return
+  }
+
+  requester.actionAckCache.set(`${eventName}:${actionId}`, ack)
+
+  if (requester.actionAckCache.size <= ACTION_ACK_CACHE_LIMIT) {
+    return
+  }
+
+  const oldestKey = requester.actionAckCache.keys().next().value
+  if (oldestKey) {
+    requester.actionAckCache.delete(oldestKey)
   }
 }
 
@@ -276,7 +326,8 @@ function createPlayer(name: string, isHost: boolean, socketId: string): RoomPlay
     isHost,
     sessionToken: randomUUID(),
     socketId,
-    connected: true
+    connected: true,
+    actionAckCache: new Map()
   }
 }
 
@@ -447,19 +498,27 @@ io.on('connection', (socket) => {
     socket.data.playerId = undefined
   })
 
-  socket.on('start-game', (callback: (ack: SocketAck | { ok: false; error: string }) => void) => {
-    const roomCode = socket.data.roomCode as string | undefined
-    const room = roomCode ? rooms.get(roomCode) : undefined
+  socket.on(
+    'start-game',
+    (
+      payloadOrCallback:
+        | { actionId?: string }
+        | ((ack: SocketAck | { ok: false; error: string }) => void),
+      maybeCallback?: (ack: SocketAck | { ok: false; error: string }) => void
+    ) => {
+      const payload = typeof payloadOrCallback === 'function' ? {} : payloadOrCallback
+      const callback = typeof payloadOrCallback === 'function' ? payloadOrCallback : maybeCallback
+      if (!callback) {
+        return
+      }
 
-    if (!room) {
-      callback({ ok: false, error: 'Room not found.' })
-      return
-    }
+      const roomCode = socket.data.roomCode as string | undefined
+      const room = roomCode ? rooms.get(roomCode) : undefined
 
-    if (room.phase !== 'lobby') {
-      callback({ ok: false, error: 'Game has already started.' })
-      return
-    }
+      if (!room) {
+        callback({ ok: false, error: 'Room not found.' })
+        return
+      }
 
       const requester = room.players.get(socket.data.playerId as string | undefined ?? '')
       if (!requester || !requester.connected || requester.socketId !== socket.id) {
@@ -467,43 +526,63 @@ io.on('connection', (socket) => {
         return
       }
 
-    if (!requester.isHost) {
-      callback({ ok: false, error: 'Only the host can start the game.' })
-      return
-    }
-
-    for (const player of [...room.players.values()]) {
-      if (!player.connected) {
-        room.players.delete(player.id)
+      const cachedAck = getCachedActionAck<SocketAck | { ok: false; error: string }>(requester, 'start-game', payload)
+      if (cachedAck) {
+        callback(cachedAck)
+        return
       }
-    }
+
+      if (room.phase !== 'lobby') {
+        const ack = { ok: false, error: 'Game has already started.' } as const
+        cacheActionAck(requester, 'start-game', payload, ack)
+        callback(ack)
+        return
+      }
+
+      if (!requester.isHost) {
+        const ack = { ok: false, error: 'Only the host can start the game.' } as const
+        cacheActionAck(requester, 'start-game', payload, ack)
+        callback(ack)
+        return
+      }
+
+      for (const player of [...room.players.values()]) {
+        if (!player.connected) {
+          room.players.delete(player.id)
+        }
+      }
 
       const players = [...room.players.values()].filter((player) => player.connected)
-    if (players.length < 2) {
-      callback({ ok: false, error: 'At least two players are required.' })
-      return
-    }
+      if (players.length < 2) {
+        const ack = { ok: false, error: 'At least two players are required.' } as const
+        cacheActionAck(requester, 'start-game', payload, ack)
+        callback(ack)
+        return
+      }
 
-    const gameState = createInitialGameState(players.map((player) => player.name))
+      const gameState = createInitialGameState(players.map((player) => player.name))
       room.gameState = gameState
       assignGamePlayerIds(room)
 
-    room.phase = 'in-game'
-    persistRooms()
+      room.phase = 'in-game'
+      persistRooms()
 
-      callback({
+      const ack: SocketAck = {
         ok: true,
         room: toRoomSnapshotForPlayer(room, requester),
         playerId: requester.id,
         sessionToken: requester.sessionToken
-      })
-    broadcastRoom(room)
-  })
+      }
+      cacheActionAck(requester, 'start-game', payload, ack)
+      callback(ack)
+      broadcastRoom(room)
+    }
+  )
 
   socket.on(
     'submit-answer',
     (
-      payload: { cardIds?: string[] },
+      payload: { cardIds?: string[]; actionId?: string },
       callback: (ack: { ok: true } | { ok: false; error: string }) => void
     ) => {
       const roomCode = socket.data.roomCode as string | undefined
@@ -520,22 +599,38 @@ io.on('connection', (socket) => {
         return
       }
 
+      const cachedAck = getCachedActionAck<{ ok: true } | { ok: false; error: string }>(
+        requester,
+        'submit-answer',
+        payload
+      )
+      if (cachedAck) {
+        callback(cachedAck)
+        return
+      }
+
       if (!requester.gamePlayerId) {
-        callback({ ok: false, error: 'Player not found in active game.' })
+        const ack = { ok: false, error: 'Player not found in active game.' } as const
+        cacheActionAck(requester, 'submit-answer', payload, ack)
+        callback(ack)
         return
       }
 
       const currentState = room.gameState
       const nextState = submitAnswer(currentState, requester.gamePlayerId, payload.cardIds ?? [])
       if (nextState === currentState) {
-        callback({ ok: false, error: 'Invalid submission for current turn.' })
+        const ack = { ok: false, error: 'Invalid submission for current turn.' } as const
+        cacheActionAck(requester, 'submit-answer', payload, ack)
+        callback(ack)
         return
       }
 
       room.gameState = nextState
       persistRooms()
 
-      callback({ ok: true })
+      const ack = { ok: true } as const
+      cacheActionAck(requester, 'submit-answer', payload, ack)
+      callback(ack)
       broadcastRoom(room)
     }
   )
@@ -543,7 +638,7 @@ io.on('connection', (socket) => {
   socket.on(
     'choose-winner',
     (
-      payload: { winnerId?: string },
+      payload: { winnerId?: string; actionId?: string },
       callback: (ack: { ok: true } | { ok: false; error: string }) => void
     ) => {
       const roomCode = socket.data.roomCode as string | undefined
@@ -560,19 +655,35 @@ io.on('connection', (socket) => {
         return
       }
 
+      const cachedAck = getCachedActionAck<{ ok: true } | { ok: false; error: string }>(
+        requester,
+        'choose-winner',
+        payload
+      )
+      if (cachedAck) {
+        callback(cachedAck)
+        return
+      }
+
       const judgePlayerId = room.gameState.players[room.gameState.judgeIndex]?.id
       if (!requester.gamePlayerId || requester.gamePlayerId !== judgePlayerId) {
-        callback({ ok: false, error: 'Only the judge can pick a winner.' })
+        const ack = { ok: false, error: 'Only the judge can pick a winner.' } as const
+        cacheActionAck(requester, 'choose-winner', payload, ack)
+        callback(ack)
         return
       }
 
       if (room.gameState.phase !== 'waiting-for-judge') {
-        callback({ ok: false, error: 'Round is not ready for judging.' })
+        const ack = { ok: false, error: 'Round is not ready for judging.' } as const
+        cacheActionAck(requester, 'choose-winner', payload, ack)
+        callback(ack)
         return
       }
 
       if (!payload.winnerId) {
-        callback({ ok: false, error: 'Winner is required.' })
+        const ack = { ok: false, error: 'Winner is required.' } as const
+        cacheActionAck(requester, 'choose-winner', payload, ack)
+        callback(ack)
         return
       }
 
@@ -580,7 +691,9 @@ io.on('connection', (socket) => {
 
       const resolvedWinnerId = room.judgeAliasToPlayerId.get(payload.winnerId)
       if (!resolvedWinnerId) {
-        callback({ ok: false, error: 'Winner is invalid.' })
+        const ack = { ok: false, error: 'Winner is invalid.' } as const
+        cacheActionAck(requester, 'choose-winner', payload, ack)
+        callback(ack)
         return
       }
 
@@ -588,7 +701,9 @@ io.on('connection', (socket) => {
         (submittedAnswer) => submittedAnswer.playerId === resolvedWinnerId
       )
       if (!isSubmittedPlayer) {
-        callback({ ok: false, error: 'Winner is invalid.' })
+        const ack = { ok: false, error: 'Winner is invalid.' } as const
+        cacheActionAck(requester, 'choose-winner', payload, ack)
+        callback(ack)
         return
       }
 
@@ -596,12 +711,27 @@ io.on('connection', (socket) => {
       room.gameState = nextState
       persistRooms()
 
-      callback({ ok: true })
+      const ack = { ok: true } as const
+      cacheActionAck(requester, 'choose-winner', payload, ack)
+      callback(ack)
       broadcastRoom(room)
     }
   )
 
-  socket.on('next-round', (callback: (ack: { ok: true } | { ok: false; error: string }) => void) => {
+  socket.on(
+    'next-round',
+    (
+      payloadOrCallback:
+        | { actionId?: string }
+        | ((ack: { ok: true } | { ok: false; error: string }) => void),
+      maybeCallback?: (ack: { ok: true } | { ok: false; error: string }) => void
+    ) => {
+    const payload = typeof payloadOrCallback === 'function' ? {} : payloadOrCallback
+    const callback = typeof payloadOrCallback === 'function' ? payloadOrCallback : maybeCallback
+    if (!callback) {
+      return
+    }
+
     const roomCode = socket.data.roomCode as string | undefined
     const room = roomCode ? rooms.get(roomCode) : undefined
 
@@ -616,21 +746,38 @@ io.on('connection', (socket) => {
       return
     }
 
+    const cachedAck = getCachedActionAck<{ ok: true } | { ok: false; error: string }>(
+      requester,
+      'next-round',
+      payload
+    )
+    if (cachedAck) {
+      callback(cachedAck)
+      return
+    }
+
     if (!requester.isHost) {
-      callback({ ok: false, error: 'Only the host can advance rounds.' })
+      const ack = { ok: false, error: 'Only the host can advance rounds.' } as const
+      cacheActionAck(requester, 'next-round', payload, ack)
+      callback(ack)
       return
     }
 
     if (room.gameState.phase !== 'round-over') {
-      callback({ ok: false, error: 'Round is not ready to advance.' })
+      const ack = { ok: false, error: 'Round is not ready to advance.' } as const
+      cacheActionAck(requester, 'next-round', payload, ack)
+      callback(ack)
       return
     }
 
     room.gameState = nextRound(room.gameState)
     persistRooms()
-    callback({ ok: true })
+    const ack = { ok: true } as const
+    cacheActionAck(requester, 'next-round', payload, ack)
+    callback(ack)
     broadcastRoom(room)
-  })
+    }
+  )
 
   socket.on('disconnect', () => {
     leaveCurrentRoom(socket.id, socket.data.roomCode, false)

@@ -5,6 +5,14 @@ import type { RoomSnapshot, SocketAck } from './types'
 const SERVER_URL = import.meta.env.VITE_SERVER_URL ?? 'http://localhost:3001'
 const SESSION_STORAGE_KEY = 'cah-remote-session'
 
+function createActionId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
 type SavedSession = {
   roomCode: string
   sessionToken: string
@@ -274,7 +282,7 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
     }
 
     setPendingAction('start')
-    socket.emit('start-game', (ack: SocketAck) => {
+    socket.emit('start-game', { actionId: createActionId() }, (ack: SocketAck) => {
       setPendingAction(null)
 
       if (!ack.ok) {
@@ -292,7 +300,7 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
     }
 
     setPendingAction('submit')
-    socket.emit('submit-answer', { cardIds: selectedCardIds }, (ack: { ok: boolean; error?: string }) => {
+    socket.emit('submit-answer', { cardIds: selectedCardIds, actionId: createActionId() }, (ack: { ok: boolean; error?: string }) => {
       setPendingAction(null)
 
       if (!ack.ok) {
@@ -310,7 +318,7 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
     }
 
     setPendingAction('choose')
-    socket.emit('choose-winner', { winnerId }, (ack: { ok: boolean; error?: string }) => {
+    socket.emit('choose-winner', { winnerId, actionId: createActionId() }, (ack: { ok: boolean; error?: string }) => {
       setPendingAction(null)
 
       if (!ack.ok) {
@@ -325,7 +333,7 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
     }
 
     setPendingAction('advance')
-    socket.emit('next-round', (ack: { ok: boolean; error?: string }) => {
+    socket.emit('next-round', { actionId: createActionId() }, (ack: { ok: boolean; error?: string }) => {
       setPendingAction(null)
 
       if (!ack.ok) {
