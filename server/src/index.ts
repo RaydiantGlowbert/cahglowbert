@@ -2,6 +2,13 @@ import cors from 'cors'
 import express from 'express'
 import { createServer } from 'http'
 import { Server } from 'socket.io'
+import {
+  chooseWinner,
+  createInitialGameState,
+  nextRound,
+  submitAnswer,
+  type GameState
+} from '../../src/game'
 import type { RoomPlayer, RoomSnapshot, SocketAck } from './types'
 
 const PORT = Number(process.env.PORT ?? 3001)
@@ -11,6 +18,8 @@ const ROOM_CODE_LENGTH = 6
 type Room = {
   roomCode: string
   players: Map<string, RoomPlayer>
+  phase: 'lobby' | 'in-game'
+  gameState: GameState | null
 }
 
 const rooms = new Map<string, Room>()
@@ -58,7 +67,8 @@ function toRoomSnapshot(room: Room): RoomSnapshot {
   return {
     roomCode: room.roomCode,
     players: [...room.players.values()],
-    phase: 'lobby'
+    phase: room.phase,
+    gameState: room.gameState ?? undefined
   }
 }
 
@@ -112,7 +122,9 @@ io.on('connection', (socket) => {
     const roomCode = createUniqueRoomCode()
     const room: Room = {
       roomCode,
-      players: new Map()
+      players: new Map(),
+      phase: 'lobby',
+      gameState: null
     }
 
     const player: RoomPlayer = {
@@ -186,6 +198,130 @@ io.on('connection', (socket) => {
   socket.on('leave-room', () => {
     leaveCurrentRoom(socket.id, socket.data.roomCode)
     socket.data.roomCode = undefined
+  })
+
+  socket.on('start-game', (callback: (ack: SocketAck | { ok: false; error: string }) => void) => {
+    const roomCode = socket.data.roomCode as string | undefined
+    const room = roomCode ? rooms.get(roomCode) : undefined
+
+    if (!room) {
+      callback({ ok: false, error: 'Room not found.' })
+      return
+    }
+
+    const requester = room.players.get(socket.id)
+    if (!requester?.isHost) {
+      callback({ ok: false, error: 'Only the host can start the game.' })
+      return
+    }
+
+    const players = [...room.players.values()]
+    if (players.length < 2) {
+      callback({ ok: false, error: 'At least two players are required.' })
+      return
+    }
+
+    const gameState = createInitialGameState(players.map((player) => player.name))
+    players.forEach((player, index) => {
+      const gamePlayerId = gameState.players[index]?.id
+      room.players.set(player.id, {
+        ...player,
+        gamePlayerId
+      })
+    })
+
+    room.phase = 'in-game'
+    room.gameState = gameState
+
+    callback({ ok: true, room: toRoomSnapshot(room), playerId: socket.id })
+    broadcastRoom(room)
+  })
+
+  socket.on(
+    'submit-answer',
+    (
+      payload: { cardIds?: string[] },
+      callback: (ack: { ok: true } | { ok: false; error: string }) => void
+    ) => {
+      const roomCode = socket.data.roomCode as string | undefined
+      const room = roomCode ? rooms.get(roomCode) : undefined
+
+      if (!room || room.phase !== 'in-game' || !room.gameState) {
+        callback({ ok: false, error: 'Game is not active.' })
+        return
+      }
+
+      const requester = room.players.get(socket.id)
+      if (!requester?.gamePlayerId) {
+        callback({ ok: false, error: 'Player not found in active game.' })
+        return
+      }
+
+      const nextState = submitAnswer(room.gameState, requester.gamePlayerId, payload.cardIds ?? [])
+      room.gameState = nextState
+
+      callback({ ok: true })
+      broadcastRoom(room)
+    }
+  )
+
+  socket.on(
+    'choose-winner',
+    (
+      payload: { winnerId?: string },
+      callback: (ack: { ok: true } | { ok: false; error: string }) => void
+    ) => {
+      const roomCode = socket.data.roomCode as string | undefined
+      const room = roomCode ? rooms.get(roomCode) : undefined
+
+      if (!room || room.phase !== 'in-game' || !room.gameState) {
+        callback({ ok: false, error: 'Game is not active.' })
+        return
+      }
+
+      const requester = room.players.get(socket.id)
+      const judgePlayerId = room.gameState.players[room.gameState.judgeIndex]?.id
+      if (!requester?.gamePlayerId || requester.gamePlayerId !== judgePlayerId) {
+        callback({ ok: false, error: 'Only the judge can pick a winner.' })
+        return
+      }
+
+      if (!payload.winnerId) {
+        callback({ ok: false, error: 'Winner is required.' })
+        return
+      }
+
+      const nextState = chooseWinner(room.gameState, payload.winnerId)
+      room.gameState = nextState
+
+      callback({ ok: true })
+      broadcastRoom(room)
+    }
+  )
+
+  socket.on('next-round', (callback: (ack: { ok: true } | { ok: false; error: string }) => void) => {
+    const roomCode = socket.data.roomCode as string | undefined
+    const room = roomCode ? rooms.get(roomCode) : undefined
+
+    if (!room || room.phase !== 'in-game' || !room.gameState) {
+      callback({ ok: false, error: 'Game is not active.' })
+      return
+    }
+
+    const requester = room.players.get(socket.id)
+    if (!requester) {
+      callback({ ok: false, error: 'Player not found in room.' })
+      return
+    }
+
+    if (room.gameState.phase !== 'round-over') {
+      callback({ ok: false, error: 'Round is not ready to advance.' })
+      return
+    }
+
+    room.gameState = nextRound(room.gameState)
+    callback({ ok: true })
+    broadcastRoom(room)
   })
 
   socket.on('disconnect', () => {

@@ -17,6 +17,7 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
   const [roomCodeInput, setRoomCodeInput] = useState('')
   const [currentRoom, setCurrentRoom] = useState<RoomSnapshot | null>(null)
   const [currentPlayerId, setCurrentPlayerId] = useState<string | null>(null)
+  const [selectedCardIds, setSelectedCardIds] = useState<string[]>([])
 
   useEffect(() => {
     const nextSocket = io(SERVER_URL, {
@@ -35,7 +36,8 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
     })
 
     nextSocket.on('room-updated', (room: RoomSnapshot) => {
-      setCurrentRoom((existing) => (existing?.roomCode === room.roomCode ? room : existing))
+      setCurrentRoom(room)
+      setErrorMessage(null)
     })
 
     return () => {
@@ -48,6 +50,27 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
     () => currentRoom?.players.find((player) => player.id === currentPlayerId) ?? null,
     [currentPlayerId, currentRoom]
   )
+
+  const gameState = currentRoom?.gameState ?? null
+  const currentGamePlayer = useMemo(() => {
+    if (!gameState || !playerInRoom?.gamePlayerId) {
+      return null
+    }
+
+    return gameState.players.find((player) => player.id === playerInRoom.gamePlayerId) ?? null
+  }, [gameState, playerInRoom?.gamePlayerId])
+
+  const requiredPick = gameState?.blackCard?.pick ?? 1
+  const isJudge = Boolean(
+    gameState && playerInRoom?.gamePlayerId && gameState.players[gameState.judgeIndex]?.id === playerInRoom.gamePlayerId
+  )
+  const isActiveAnsweringPlayer = Boolean(
+    gameState && playerInRoom?.gamePlayerId && gameState.answeringPlayerId === playerInRoom.gamePlayerId
+  )
+
+  useEffect(() => {
+    setSelectedCardIds([])
+  }, [gameState?.phase, gameState?.round])
 
   const createRoom = () => {
     if (!socket) {
@@ -96,6 +119,75 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
     setCurrentRoom(null)
     setCurrentPlayerId(null)
     setErrorMessage(null)
+    setSelectedCardIds([])
+  }
+
+  const startGame = () => {
+    if (!socket) {
+      return
+    }
+
+    socket.emit('start-game', (ack: SocketAck) => {
+      if (!ack.ok) {
+        setErrorMessage(ack.error)
+        return
+      }
+
+      setCurrentRoom(ack.room)
+    })
+  }
+
+  const submitAnswer = () => {
+    if (!socket || selectedCardIds.length !== requiredPick) {
+      return
+    }
+
+    socket.emit('submit-answer', { cardIds: selectedCardIds }, (ack: { ok: boolean; error?: string }) => {
+      if (!ack.ok) {
+        setErrorMessage(ack.error ?? 'Could not submit answer.')
+        return
+      }
+
+      setSelectedCardIds([])
+    })
+  }
+
+  const chooseWinner = (winnerId: string) => {
+    if (!socket) {
+      return
+    }
+
+    socket.emit('choose-winner', { winnerId }, (ack: { ok: boolean; error?: string }) => {
+      if (!ack.ok) {
+        setErrorMessage(ack.error ?? 'Could not choose winner.')
+      }
+    })
+  }
+
+  const advanceRound = () => {
+    if (!socket) {
+      return
+    }
+
+    socket.emit('next-round', (ack: { ok: boolean; error?: string }) => {
+      if (!ack.ok) {
+        setErrorMessage(ack.error ?? 'Could not advance round.')
+      }
+    })
+  }
+
+  const toggleCard = (cardId: string) => {
+    setSelectedCardIds((current) => {
+      if (current.includes(cardId)) {
+        return current.filter((id) => id !== cardId)
+      }
+
+      if (current.length >= requiredPick) {
+        return current
+      }
+
+      return [...current, cardId]
+    })
   }
 
   return (
@@ -158,7 +250,7 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
         </div>
       ) : (
         <div className="sidebar-card">
-          <h3>Waiting room: {currentRoom.roomCode}</h3>
+          <h3>{currentRoom.phase === 'lobby' ? 'Waiting room' : 'Remote game'}: {currentRoom.roomCode}</h3>
           <p>{currentRoom.players.length}/15 players connected</p>
           <div className="score-stack">
             {currentRoom.players.map((player) => (
@@ -172,20 +264,140 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
             ))}
           </div>
 
-          <div className="action-row">
-            <button type="button" className="secondary-action" onClick={leaveRoom}>
-              Leave room
-            </button>
-            <button type="button" className="secondary-action" onClick={onBackToLocal}>
-              Back to local mode
-            </button>
-          </div>
+          {currentRoom.phase === 'lobby' ? (
+            <>
+              <div className="action-row">
+                {playerInRoom?.isHost ? (
+                  <button type="button" className="primary-action" onClick={startGame}>
+                    Start remote game
+                  </button>
+                ) : null}
+                <button type="button" className="secondary-action" onClick={leaveRoom}>
+                  Leave room
+                </button>
+                <button type="button" className="secondary-action" onClick={onBackToLocal}>
+                  Back to local mode
+                </button>
+              </div>
 
-          {playerInRoom?.isHost ? (
-            <p className="setup-warning">Host controls and round sync are next in M2.</p>
-          ) : (
-            <p className="setup-warning">Waiting for host to start game (M2).</p>
-          )}
+              {playerInRoom?.isHost ? (
+                <p className="setup-warning">Start once everyone has joined.</p>
+              ) : (
+                <p className="setup-warning">Waiting for host to start the game.</p>
+              )}
+            </>
+          ) : null}
+
+          {currentRoom.phase === 'in-game' && gameState ? (
+            <div className="remote-game-wrap">
+              <div className="status-row remote-status-row">
+                <div className="status-pill">Round: <strong>{gameState.round}</strong></div>
+                <div className="status-pill">Phase: <strong>{gameState.phase.replace(/-/g, ' ')}</strong></div>
+                <div className="status-pill">Judge: <strong>{gameState.players[gameState.judgeIndex]?.name}</strong></div>
+              </div>
+
+              <article className="prompt-card">
+                <span>Prompt card</span>
+                <strong>{gameState.blackCard?.text}</strong>
+                <p>Pick {requiredPick} white card{requiredPick > 1 ? 's' : ''}.</p>
+              </article>
+
+              <div className="sidebar-card">
+                <h3>Scores</h3>
+                <div className="score-stack">
+                  {gameState.players.map((player) => (
+                    <div key={player.id} className="score-row">
+                      <span>{player.name}</span>
+                      <strong>{player.score}</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {gameState.phase === 'waiting-for-answers' ? (
+                <div className="sidebar-card">
+                  <h3>{isActiveAnsweringPlayer ? 'Your turn to submit' : 'Waiting for answers'}</h3>
+                  {isActiveAnsweringPlayer && currentGamePlayer ? (
+                    <>
+                      <div className="answer-grid hand-grid">
+                        {currentGamePlayer.hand.map((card) => (
+                          <button
+                            key={card.id}
+                            type="button"
+                            className={`answer-card ${selectedCardIds.includes(card.id) ? 'selected' : ''}`}
+                            onClick={() => toggleCard(card.id)}
+                          >
+                            <span className="card-label">White card</span>
+                            {card.text}
+                          </button>
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        className="primary-action"
+                        onClick={submitAnswer}
+                        disabled={selectedCardIds.length !== requiredPick}
+                      >
+                        Submit {requiredPick} card{requiredPick > 1 ? 's' : ''}
+                      </button>
+                    </>
+                  ) : (
+                    <p className="setup-warning">Waiting for {gameState.answeringPlayerId ? 'the active player to submit.' : 'players to submit.'}</p>
+                  )}
+                </div>
+              ) : null}
+
+              {gameState.phase === 'waiting-for-judge' ? (
+                <div className="sidebar-card">
+                  <h3>{isJudge ? 'Pick the winning answer' : 'Judge is deciding'}</h3>
+                  <div className="answer-grid">
+                    {gameState.submittedAnswers.map((entry) => (
+                      <button
+                        key={`${entry.playerId}-${entry.cards.map((card) => card.id).join('-')}`}
+                        type="button"
+                        className="answer-card"
+                        onClick={() => chooseWinner(entry.playerId)}
+                        disabled={!isJudge}
+                      >
+                        <span className="card-label">Submission</span>
+                        <strong>{entry.cards.map((card) => card.text).join(' / ')}</strong>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {gameState.phase === 'round-over' ? (
+                <div className="sidebar-card">
+                  <h3>Round complete</h3>
+                  <p>{gameState.players.find((player) => player.id === gameState.winnerId)?.name} wins this round.</p>
+                  <button type="button" className="primary-action" onClick={advanceRound}>
+                    {gameState.round >= gameState.maxRounds ? 'Finish game' : 'Next round'}
+                  </button>
+                </div>
+              ) : null}
+
+              {gameState.phase === 'game-over' ? (
+                <div className="sidebar-card">
+                  <h3>Game over</h3>
+                  <p>
+                    {gameState.players.reduce((leader, player) =>
+                      player.score > leader.score ? player : leader
+                    , gameState.players[0]).name} wins the room.
+                  </p>
+                </div>
+              ) : null}
+
+              <div className="action-row">
+                <button type="button" className="secondary-action" onClick={leaveRoom}>
+                  Leave room
+                </button>
+                <button type="button" className="secondary-action" onClick={onBackToLocal}>
+                  Back to local mode
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
       )}
     </section>

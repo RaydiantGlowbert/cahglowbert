@@ -1,13 +1,17 @@
+import type { GameState } from '../game'
+
 export type RoomPlayer = {
   id: string
   name: string
   isHost: boolean
+  gamePlayerId?: string
 }
 
 export type RoomSnapshot = {
   roomCode: string
   players: RoomPlayer[]
-  phase: 'lobby'
+  phase: 'lobby' | 'in-game'
+  gameState?: GameState
 }
 
 export type SocketAck =
