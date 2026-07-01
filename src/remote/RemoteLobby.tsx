@@ -400,6 +400,7 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
               {gameState.phase === 'waiting-for-judge' ? (
                 <div className="sidebar-card">
                   <h3>{isJudge ? 'Pick the winning answer' : 'Judge is deciding'}</h3>
+                  <p className="setup-warning">Submissions are shuffled and anonymized each round.</p>
                   <div className="answer-grid">
                     {gameState.submittedAnswers.map((entry, index) => (
                       <button
