@@ -537,6 +537,14 @@ io.on('connection', (socket) => {
       }
 
       const resolvedWinnerId = room.judgeAliasToPlayerId.get(payload.winnerId) ?? payload.winnerId
+      const isSubmittedPlayer = room.gameState.submittedAnswers.some(
+        (submittedAnswer) => submittedAnswer.playerId === resolvedWinnerId
+      )
+      if (!isSubmittedPlayer) {
+        callback({ ok: false, error: 'Winner is invalid.' })
+        return
+      }
+
       const nextState = chooseWinner(room.gameState, resolvedWinnerId)
       room.gameState = nextState
       persistRooms()
