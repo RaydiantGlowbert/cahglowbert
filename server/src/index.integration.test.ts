@@ -836,6 +836,27 @@ describe('remote multiplayer server integration', () => {
     }
   })
 
+  it('rejects join-room when game is already in progress', async () => {
+    const setup = await setupTwoPlayerRoom()
+    const newcomer = await connectClient()
+
+    try {
+      const joinAck = await emitAck<SocketAck>(newcomer, 'join-room', {
+        roomCode: setup.createAck.room.roomCode,
+        playerName: 'Late Joiner'
+      })
+
+      expect(joinAck.ok).toBe(false)
+      if (joinAck.ok) {
+        return
+      }
+
+      expect(joinAck.error).toBe('Game already in progress.')
+    } finally {
+      disconnectSockets(setup.host, setup.guest, newcomer)
+    }
+  })
+
   it('rejects choose-winner when round is not in judge phase', async () => {
     const setup = await setupTwoPlayerRoom()
     try {
