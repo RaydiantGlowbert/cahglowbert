@@ -11,6 +11,7 @@ import {
   type GameState
 } from './game'
 import { clearPersistedState, loadPersistedState, savePersistedState } from './persistence'
+import RemoteLobby from './remote/RemoteLobby'
 
 function App() {
   const JUDGE_PAGE_SIZE = 6
@@ -23,6 +24,7 @@ function App() {
   const [shortlistMode, setShortlistMode] = useState(false)
   const [shortlistedPlayerIds, setShortlistedPlayerIds] = useState<string[]>([])
   const [shortlistLocked, setShortlistLocked] = useState(false)
+  const [playMode, setPlayMode] = useState<'local' | 'remote'>('local')
   const deckErrors = deckValidation.errors
   const hasDeckErrors = !deckValidation.isValid
 
@@ -213,9 +215,27 @@ function App() {
             <h1>Cards Against Humanity</h1>
           </div>
         </div>
+        <div className="mode-switch" role="tablist" aria-label="Play mode">
+          <button
+            type="button"
+            className={`mode-button ${playMode === 'local' ? 'active' : ''}`}
+            onClick={() => setPlayMode('local')}
+          >
+            Local
+          </button>
+          <button
+            type="button"
+            className={`mode-button ${playMode === 'remote' ? 'active' : ''}`}
+            onClick={() => setPlayMode('remote')}
+          >
+            Remote (M1)
+          </button>
+        </div>
       </header>
 
-      {!gameState ? (
+      {playMode === 'remote' ? <RemoteLobby onBackToLocal={() => setPlayMode('local')} /> : null}
+
+      {playMode === 'local' && !gameState ? (
         <section className="hero-panel setup-panel">
           <div className="hero-copy">
             <p className="eyebrow">Phase 1 • local play</p>
@@ -256,7 +276,9 @@ function App() {
             </div>
           </div>
         </section>
-      ) : (
+      ) : null}
+
+      {playMode === 'local' && gameState ? (
         <>
           <section className="table-shell">
             <div className="table-main">
@@ -491,7 +513,7 @@ function App() {
             </section>
           ) : null}
         </>
-      )}
+      ) : null}
     </main>
   )
 }

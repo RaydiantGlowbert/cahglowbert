@@ -10,6 +10,28 @@
   justify-content: space-between;
   align-items: center;
   gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.mode-switch {
+  display: inline-flex;
+  gap: 0.45rem;
+  padding: 0.25rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.5);
+}
+
+.mode-button {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: transparent;
+  color: #e2e8f0;
+  margin: 0;
+  padding: 0.5rem 0.9rem;
+}
+
+.mode-button.active {
+  background: rgba(245, 158, 11, 0.18);
+  color: #fde68a;
 }
 
 .brand {
@@ -157,6 +179,26 @@ button:hover {
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+.remote-panel {
+  margin-top: 0.4rem;
+}
+
+.remote-grid {
+  margin-top: 1rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+}
+
+.remote-status-row {
+  margin-top: 0.8rem;
+}
+
+.setup-error-text {
+  color: #fecaca;
+  margin: 0.8rem 0 0;
 }
 
 .table-topbar {
