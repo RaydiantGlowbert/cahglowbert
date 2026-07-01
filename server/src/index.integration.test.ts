@@ -389,4 +389,187 @@ describe('remote multiplayer server integration', () => {
       guest.disconnect()
     }
   })
+
+  it(
+    'shows only anonymous aliases to judge with multiple submissions',
+    async () => {
+      const host = await connectClient()
+      const guestOne = await connectClient()
+      const guestTwo = await connectClient()
+
+      try {
+        const createAck = await emitAck<SocketAck>(host, 'create-room', { playerName: 'Host' })
+        expect(createAck.ok).toBe(true)
+        if (!createAck.ok) {
+          return
+        }
+
+        const joinOneAck = await emitAck<SocketAck>(guestOne, 'join-room', {
+          roomCode: createAck.room.roomCode,
+          playerName: 'Guest One'
+        })
+        expect(joinOneAck.ok).toBe(true)
+        if (!joinOneAck.ok) {
+          return
+        }
+
+        const joinTwoAck = await emitAck<SocketAck>(guestTwo, 'join-room', {
+          roomCode: createAck.room.roomCode,
+          playerName: 'Guest Two'
+        })
+        expect(joinTwoAck.ok).toBe(true)
+        if (!joinTwoAck.ok) {
+          return
+        }
+
+        const hostInGamePromise = waitForRoomUpdated(
+          host,
+          (room) => room.phase === 'in-game' && Boolean(room.gameState)
+        )
+        const guestOneInGamePromise = waitForRoomUpdated(
+          guestOne,
+          (room) => room.phase === 'in-game' && Boolean(room.gameState)
+        )
+        const guestTwoInGamePromise = waitForRoomUpdated(
+          guestTwo,
+          (room) => room.phase === 'in-game' && Boolean(room.gameState)
+        )
+
+        const startAck = await emitAck<SocketAck | { ok: false; error: string }>(host, 'start-game')
+        expect(startAck.ok).toBe(true)
+
+        const hostInGame = await hostInGamePromise
+        const guestOneInGame = await guestOneInGamePromise
+        const guestTwoInGame = await guestTwoInGamePromise
+
+        expect(hostInGame.gameState).toBeTruthy()
+        if (!hostInGame.gameState) {
+          return
+        }
+
+        const playerToSocket = new Map<string, Socket>([
+          [createAck.playerId, host],
+          [joinOneAck.playerId, guestOne],
+          [joinTwoAck.playerId, guestTwo]
+        ])
+        const playerToSelfView = new Map<string, RoomSnapshot>([
+          [createAck.playerId, hostInGame],
+          [joinOneAck.playerId, guestOneInGame],
+          [joinTwoAck.playerId, guestTwoInGame]
+        ])
+        const playerToGamePlayerId = new Map<string, string>()
+
+        for (const roomPlayer of hostInGame.players) {
+          if (roomPlayer.gamePlayerId) {
+            playerToGamePlayerId.set(roomPlayer.id, roomPlayer.gamePlayerId)
+          }
+        }
+
+        const judgePlayerId = hostInGame.gameState.players[hostInGame.gameState.judgeIndex]?.id
+        const firstAnsweringPlayerId = hostInGame.gameState.answeringPlayerId
+
+        expect(judgePlayerId).toBeTruthy()
+        expect(firstAnsweringPlayerId).toBeTruthy()
+        if (!judgePlayerId || !firstAnsweringPlayerId) {
+          return
+        }
+
+        const findRoomPlayerIdByGamePlayerId = (gamePlayerId: string) =>
+          [...playerToGamePlayerId.entries()].find((entry) => entry[1] === gamePlayerId)?.[0]
+
+        const firstAnsweringRoomPlayerId = findRoomPlayerIdByGamePlayerId(firstAnsweringPlayerId)
+        expect(firstAnsweringRoomPlayerId).toBeTruthy()
+        if (!firstAnsweringRoomPlayerId) {
+          return
+        }
+
+        const firstAnsweringSocket = playerToSocket.get(firstAnsweringRoomPlayerId)
+        const firstAnsweringView = playerToSelfView.get(firstAnsweringRoomPlayerId)
+        const firstAnsweringHand = firstAnsweringView?.gameState?.players.find(
+          (player) => player.id === firstAnsweringPlayerId
+        )?.hand
+
+        expect(firstAnsweringSocket).toBeTruthy()
+        expect(firstAnsweringHand?.length).toBeGreaterThan(0)
+        if (!firstAnsweringSocket || !firstAnsweringHand || firstAnsweringHand.length === 0) {
+          return
+        }
+
+        const secondAnswerTurnPromise = waitForRoomUpdated(
+          host,
+          (room) =>
+            room.gameState?.phase === 'waiting-for-answers' &&
+            room.gameState.submittedAnswers.length === 1 &&
+            Boolean(room.gameState.answeringPlayerId)
+        )
+
+        const firstSubmitAck = await emitAck<BoolAck>(firstAnsweringSocket, 'submit-answer', {
+          cardIds: [firstAnsweringHand[0].id]
+        })
+        expect(firstSubmitAck.ok).toBe(true)
+
+        const secondTurnRoom = await secondAnswerTurnPromise
+        const secondAnsweringPlayerId = secondTurnRoom.gameState?.answeringPlayerId
+        expect(secondAnsweringPlayerId).toBeTruthy()
+        if (!secondAnsweringPlayerId) {
+          return
+        }
+
+        const secondAnsweringRoomPlayerId = findRoomPlayerIdByGamePlayerId(secondAnsweringPlayerId)
+        expect(secondAnsweringRoomPlayerId).toBeTruthy()
+        if (!secondAnsweringRoomPlayerId) {
+          return
+        }
+
+        const secondAnsweringSocket = playerToSocket.get(secondAnsweringRoomPlayerId)
+        const secondAnsweringView = playerToSelfView.get(secondAnsweringRoomPlayerId)
+        const secondAnsweringHand = secondAnsweringView?.gameState?.players.find(
+          (player) => player.id === secondAnsweringPlayerId
+        )?.hand
+
+        expect(secondAnsweringSocket).toBeTruthy()
+        expect(secondAnsweringHand?.length).toBeGreaterThan(0)
+        if (!secondAnsweringSocket || !secondAnsweringHand || secondAnsweringHand.length === 0) {
+          return
+        }
+
+        const judgeRoomPlayerId = findRoomPlayerIdByGamePlayerId(judgePlayerId)
+        expect(judgeRoomPlayerId).toBeTruthy()
+        if (!judgeRoomPlayerId) {
+          return
+        }
+
+        const judgeSocket = playerToSocket.get(judgeRoomPlayerId)
+        expect(judgeSocket).toBeTruthy()
+        if (!judgeSocket) {
+          return
+        }
+
+        const judgeViewPromise = waitForRoomUpdated(
+          judgeSocket,
+          (room) => room.gameState?.phase === 'waiting-for-judge' && room.gameState.submittedAnswers.length === 2
+        )
+
+        const secondSubmitAck = await emitAck<BoolAck>(secondAnsweringSocket, 'submit-answer', {
+          cardIds: [secondAnsweringHand[0].id]
+        })
+        expect(secondSubmitAck.ok).toBe(true)
+
+        const judgeView = await judgeViewPromise
+        const judgeSubmittedAnswers = judgeView.gameState?.submittedAnswers ?? []
+        const aliasIds = judgeSubmittedAnswers.map((entry) => entry.playerId)
+        const realAnsweringIds = [firstAnsweringPlayerId, secondAnsweringPlayerId]
+
+        expect(aliasIds).toHaveLength(2)
+        expect(new Set(aliasIds).size).toBe(2)
+        expect(aliasIds.every((id) => /^submission-\d+$/.test(id))).toBe(true)
+        expect(aliasIds.some((id) => realAnsweringIds.includes(id))).toBe(false)
+      } finally {
+        host.disconnect()
+        guestOne.disconnect()
+        guestTwo.disconnect()
+      }
+    },
+    20000
+  )
 })
