@@ -25,6 +25,48 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
   const [currentPlayerId, setCurrentPlayerId] = useState<string | null>(null)
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([])
 
+  const resetRemoteSession = (message?: string) => {
+    setCurrentRoom(null)
+    setCurrentPlayerId(null)
+    setSelectedCardIds([])
+    window.localStorage.removeItem(SESSION_STORAGE_KEY)
+
+    if (message) {
+      setErrorMessage(message)
+    }
+  }
+
+  const toFriendlyError = (error: string): string => {
+    if (error === 'Session is no longer active.') {
+      return 'This session was replaced by a newer connection. Rejoin from this device.'
+    }
+
+    if (error === 'Game already in progress.') {
+      return 'This room is already in progress. New players cannot join mid-game.'
+    }
+
+    if (error === 'Winner is invalid.') {
+      return 'That winning choice is no longer valid. Pick from the current submissions.'
+    }
+
+    if (error === 'Invalid submission for current turn.') {
+      return 'That submission is not valid for the current turn.'
+    }
+
+    return error
+  }
+
+  const handleActionError = (error?: string, fallback?: string) => {
+    const nextError = toFriendlyError(error ?? fallback ?? 'Something went wrong.')
+
+    if (error === 'Session is no longer active.') {
+      resetRemoteSession(nextError)
+      return
+    }
+
+    setErrorMessage(nextError)
+  }
+
   const savedSession = useMemo(() => {
     const raw = window.localStorage.getItem(SESSION_STORAGE_KEY)
     if (!raw) {
@@ -62,6 +104,11 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
         (ack: SocketAck) => {
           if (!ack.ok) {
             window.localStorage.removeItem(SESSION_STORAGE_KEY)
+            setCurrentRoom(null)
+            setCurrentPlayerId(null)
+            setSelectedCardIds([])
+            setRoomCodeInput(savedSession.roomCode)
+            setErrorMessage('Saved session expired. Rejoin with room code and player name.')
             return
           }
 
@@ -121,7 +168,7 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
     setErrorMessage(null)
     socket.emit('create-room', { playerName: createName }, (ack: SocketAck) => {
       if (!ack.ok) {
-        setErrorMessage(ack.error)
+        handleActionError(ack.error)
         return
       }
 
@@ -149,7 +196,7 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
       },
       (ack: SocketAck) => {
         if (!ack.ok) {
-          setErrorMessage(ack.error)
+          handleActionError(ack.error)
           return
         }
 
@@ -179,7 +226,7 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
 
     socket.emit('start-game', (ack: SocketAck) => {
       if (!ack.ok) {
-        setErrorMessage(ack.error)
+        handleActionError(ack.error)
         return
       }
 
@@ -194,7 +241,7 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
 
     socket.emit('submit-answer', { cardIds: selectedCardIds }, (ack: { ok: boolean; error?: string }) => {
       if (!ack.ok) {
-        setErrorMessage(ack.error ?? 'Could not submit answer.')
+        handleActionError(ack.error, 'Could not submit answer.')
         return
       }
 
@@ -209,7 +256,7 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
 
     socket.emit('choose-winner', { winnerId }, (ack: { ok: boolean; error?: string }) => {
       if (!ack.ok) {
-        setErrorMessage(ack.error ?? 'Could not choose winner.')
+        handleActionError(ack.error, 'Could not choose winner.')
       }
     })
   }
@@ -221,7 +268,7 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
 
     socket.emit('next-round', (ack: { ok: boolean; error?: string }) => {
       if (!ack.ok) {
-        setErrorMessage(ack.error ?? 'Could not advance round.')
+        handleActionError(ack.error, 'Could not advance round.')
       }
     })
   }
