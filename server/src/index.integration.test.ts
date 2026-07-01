@@ -748,6 +748,78 @@ describe('remote multiplayer server integration', () => {
     }
   })
 
+  it('rejects submit-answer from non-answering player', async () => {
+    const setup = await setupTwoPlayerRoom()
+    try {
+      const hostInGame = setup.hostInGame
+      const guestInGame = setup.guestInGame
+
+      expect(hostInGame).toBeTruthy()
+      expect(guestInGame).toBeTruthy()
+      if (!hostInGame || !guestInGame || !hostInGame.gameState || !guestInGame.gameState) {
+        return
+      }
+
+      const hostPlayer = hostInGame.players.find((player) => player.id === setup.createAck.playerId)
+      const guestPlayer = guestInGame.players.find((player) => player.id === setup.joinAck.playerId)
+
+      expect(hostPlayer?.gamePlayerId).toBeTruthy()
+      expect(guestPlayer?.gamePlayerId).toBeTruthy()
+      if (!hostPlayer?.gamePlayerId || !guestPlayer?.gamePlayerId) {
+        return
+      }
+
+      const answeringPlayerId = hostInGame.gameState.answeringPlayerId
+      expect(answeringPlayerId).toBeTruthy()
+      if (!answeringPlayerId) {
+        return
+      }
+
+      const answeringSocket = hostPlayer.gamePlayerId === answeringPlayerId ? setup.host : setup.guest
+      const nonAnsweringSocket = answeringSocket === setup.host ? setup.guest : setup.host
+      const nonAnsweringView = answeringSocket === setup.host ? guestInGame : hostInGame
+      const answeringView = answeringSocket === setup.host ? hostInGame : guestInGame
+
+      const nonAnsweringHand = nonAnsweringView.gameState.players.find(
+        (player) => player.id !== answeringPlayerId
+      )?.hand
+      const answeringHand = answeringView.gameState.players.find(
+        (player) => player.id === answeringPlayerId
+      )?.hand
+
+      expect(nonAnsweringHand?.length).toBeGreaterThan(0)
+      expect(answeringHand?.length).toBeGreaterThan(0)
+      if (!nonAnsweringHand || !answeringHand || nonAnsweringHand.length === 0 || answeringHand.length === 0) {
+        return
+      }
+
+      const invalidSubmitAck = await emitAck<BoolAck>(nonAnsweringSocket, 'submit-answer', {
+        cardIds: [nonAnsweringHand[0].id]
+      })
+      expect(invalidSubmitAck.ok).toBe(false)
+      if (invalidSubmitAck.ok) {
+        return
+      }
+
+      expect(invalidSubmitAck.error).toBe('Invalid submission for current turn.')
+
+      const judgeViewPromise = waitForRoomUpdated(
+        setup.host,
+        (room) => room.gameState?.phase === 'waiting-for-judge' && room.gameState.submittedAnswers.length === 1
+      )
+
+      const validSubmitAck = await emitAck<BoolAck>(answeringSocket, 'submit-answer', {
+        cardIds: [answeringHand[0].id]
+      })
+      expect(validSubmitAck.ok).toBe(true)
+
+      const judgeView = await judgeViewPromise
+      expect(judgeView.gameState?.phase).toBe('waiting-for-judge')
+    } finally {
+      disconnectSockets(setup.host, setup.guest)
+    }
+  })
+
   it('rejects choose-winner when round is not in judge phase', async () => {
     const setup = await setupTwoPlayerRoom()
     try {

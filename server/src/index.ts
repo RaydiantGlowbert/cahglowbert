@@ -501,7 +501,13 @@ io.on('connection', (socket) => {
         return
       }
 
-      const nextState = submitAnswer(room.gameState, requester.gamePlayerId, payload.cardIds ?? [])
+      const currentState = room.gameState
+      const nextState = submitAnswer(currentState, requester.gamePlayerId, payload.cardIds ?? [])
+      if (nextState === currentState) {
+        callback({ ok: false, error: 'Invalid submission for current turn.' })
+        return
+      }
+
       room.gameState = nextState
       persistRooms()
 
