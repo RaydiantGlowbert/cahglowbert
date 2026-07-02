@@ -21,6 +21,17 @@ const ROOM_CODE_LENGTH = 6
 const ACTION_ACK_CACHE_LIMIT = 64
 const ROOMS_STORE_PATH = path.resolve(process.cwd(), 'server', 'data', 'rooms.json')
 
+function parseCorsOrigins(rawOrigins: string | undefined): string[] | '*' {
+  const parsedOrigins = rawOrigins
+    ?.split(',')
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0)
+
+  return parsedOrigins && parsedOrigins.length > 0 ? parsedOrigins : '*'
+}
+
+const corsOrigins = parseCorsOrigins(process.env.CORS_ORIGIN)
+
 type ActionAck = SocketAck | { ok: true } | { ok: false; error: string }
 
 type RoomPlayerState = {
@@ -155,7 +166,7 @@ function cacheActionAck(requester: RoomPlayerState, eventName: string, payload: 
 const app = express()
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN?.split(',').map((origin) => origin.trim()) ?? '*'
+    origin: corsOrigins
   })
 )
 app.get('/health', (_request, response) => {
@@ -166,7 +177,7 @@ const httpServer = createServer(app)
 
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.CORS_ORIGIN?.split(',').map((origin) => origin.trim()) ?? '*'
+    origin: corsOrigins
   }
 })
 
@@ -798,6 +809,10 @@ export async function bootstrap() {
     httpServer.listen(PORT, () => {
       httpServer.off('error', reject)
       console.log(`Multiplayer server listening on http://localhost:${PORT}`)
+      console.log(
+        `Room storage mode: ${process.env.ROOM_STORE?.trim().toLowerCase() || (process.env.REDIS_URL ? 'redis(auto)' : 'file')}`
+      )
+      console.log(`CORS origin mode: ${Array.isArray(corsOrigins) ? corsOrigins.join(', ') : 'all origins (*)'}`)
       resolve()
     })
   })

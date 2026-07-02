@@ -118,6 +118,7 @@ Set server env in your backend host:
 ## Official Launch Prep
 
 Use OFFICIAL_LAUNCH_CHECKLIST.md for launch-day prep without adding a full testing round.
+For a full-room session plan, use 15_PLAYER_EVENT_RUNBOOK.md.
 
 ## Known Limitations
 

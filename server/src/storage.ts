@@ -113,17 +113,22 @@ export function createRoomStore(options: {
   filePath: string
 }): RoomStore {
   const normalizedMode = options.mode?.trim().toLowerCase()
+  const normalizedRedisUrl = options.redisUrl?.trim()
 
   if (normalizedMode === 'memory') {
     return new MemoryRoomStore()
   }
 
-  if (normalizedMode === 'redis' && options.redisUrl) {
-    return new RedisRoomStore(options.redisUrl)
+  if (normalizedMode === 'redis') {
+    if (!normalizedRedisUrl) {
+      throw new Error('ROOM_STORE is set to redis but REDIS_URL is missing.')
+    }
+
+    return new RedisRoomStore(normalizedRedisUrl)
   }
 
-  if (!normalizedMode && options.redisUrl) {
-    return new RedisRoomStore(options.redisUrl)
+  if (!normalizedMode && normalizedRedisUrl) {
+    return new RedisRoomStore(normalizedRedisUrl)
   }
 
   return new FileRoomStore(options.filePath)
