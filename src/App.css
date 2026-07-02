@@ -210,6 +210,39 @@ button:focus-visible,
   transition: box-shadow 220ms ease, border-color 220ms ease, background 220ms ease;
 }
 
+.phase-spotlight {
+  position: sticky;
+  top: 0.75rem;
+  z-index: 30;
+  margin-bottom: 0.9rem;
+  padding: 0.9rem 1rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  background: linear-gradient(135deg, rgba(17, 24, 39, 0.96), rgba(51, 65, 85, 0.94));
+  box-shadow: 0 18px 40px rgba(2, 6, 23, 0.3);
+  animation: spotlightIn 220ms ease;
+}
+
+.phase-spotlight-kicker {
+  display: inline-block;
+  margin-bottom: 0.28rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #fbbf24;
+}
+
+.phase-spotlight strong {
+  display: block;
+  color: white;
+  font-size: 1.1rem;
+}
+
+.phase-spotlight p {
+  margin-top: 0.22rem;
+  color: #e2e8f0;
+}
+
 .remote-panel.in-game-focus.phase-waiting-for-answers {
   border-color: rgba(245, 158, 11, 0.42);
   background: linear-gradient(160deg, rgba(54, 36, 9, 0.42), rgba(15, 23, 42, 0.9));
@@ -601,6 +634,7 @@ button:focus-visible,
 .winner-card {
   border-color: rgba(250, 204, 21, 0.45);
   box-shadow: 0 0 0 1px rgba(250, 204, 21, 0.22) inset;
+  background: radial-gradient(circle at top, rgba(250, 204, 21, 0.16), rgba(255, 255, 255, 0.05));
 }
 
 .winner-message {
@@ -617,6 +651,18 @@ button:focus-visible,
   from {
     opacity: 0;
     transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes spotlightIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
   }
 
   to {

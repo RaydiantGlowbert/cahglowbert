@@ -33,7 +33,10 @@ function RemoteLobby() {
   const [currentPlayerId, setCurrentPlayerId] = useState<string | null>(null)
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([])
   const [showStartGuide, setShowStartGuide] = useState(false)
+  const [phaseSpotlight, setPhaseSpotlight] = useState<{ title: string; detail: string } | null>(null)
   const previousRoomPhaseRef = useRef<'lobby' | 'in-game' | null>(null)
+  const previousGamePhaseRef = useRef<string | null>(null)
+  const spotlightTimerRef = useRef<number | null>(null)
 
   const resetRemoteSession = (message?: string) => {
     setCurrentRoom(null)
@@ -244,6 +247,57 @@ function RemoteLobby() {
     previousRoomPhaseRef.current = currentPhase
   }, [currentRoom?.phase])
 
+  useEffect(() => {
+    if (!gameState) {
+      previousGamePhaseRef.current = null
+      return
+    }
+
+    const previousGamePhase = previousGamePhaseRef.current
+    previousGamePhaseRef.current = gameState.phase
+
+    if (currentRoom?.phase !== 'in-game' || !previousGamePhase || previousGamePhase === gameState.phase) {
+      return
+    }
+
+    let nextSpotlight: { title: string; detail: string } | null = null
+
+    if (gameState.phase === 'waiting-for-judge') {
+      nextSpotlight = {
+        title: 'Judge phase',
+        detail: `${gameState.players[gameState.judgeIndex]?.name} is choosing the winner.`
+      }
+    } else if (gameState.phase === 'round-over') {
+      nextSpotlight = {
+        title: 'Round winner',
+        detail: `${gameState.players.find((player) => player.id === gameState.winnerId)?.name ?? 'A player'} takes the round.`
+      }
+    }
+
+    if (!nextSpotlight) {
+      return
+    }
+
+    setPhaseSpotlight(nextSpotlight)
+
+    if (spotlightTimerRef.current) {
+      window.clearTimeout(spotlightTimerRef.current)
+    }
+
+    spotlightTimerRef.current = window.setTimeout(() => {
+      setPhaseSpotlight(null)
+      spotlightTimerRef.current = null
+    }, 2200)
+  }, [currentRoom?.phase, gameState])
+
+  useEffect(() => {
+    return () => {
+      if (spotlightTimerRef.current) {
+        window.clearTimeout(spotlightTimerRef.current)
+      }
+    }
+  }, [])
+
   const createRoom = () => {
     if (!socket || pendingAction) {
       return
@@ -392,6 +446,13 @@ function RemoteLobby() {
   return (
     <section className={`game-panel remote-panel ${isInGamePhase ? 'in-game-focus' : ''} ${phaseClass}`}>
       <p className="sr-only" aria-live="polite">{liveMessage}</p>
+      {phaseSpotlight ? (
+        <div className="phase-spotlight" role="status" aria-live="polite">
+          <span className="phase-spotlight-kicker">Round update</span>
+          <strong>{phaseSpotlight.title}</strong>
+          <p>{phaseSpotlight.detail}</p>
+        </div>
+      ) : null}
       {showStartGuide && isInGamePhase ? (
         <div className="game-start-overlay" role="dialog" aria-modal="true" aria-labelledby="game-start-title">
           <div className="game-start-modal">
