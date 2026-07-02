@@ -602,7 +602,7 @@ function RemoteLobby() {
                       </div>
                       <button
                         type="button"
-                        className="primary-action"
+                        className="primary-action mobile-sticky-action"
                         onClick={submitAnswer}
                         disabled={selectedCardIds.length !== requiredPick || isSubmitting || Boolean(pendingAction && !isSubmitting)}
                       >
@@ -651,7 +651,7 @@ function RemoteLobby() {
                   <p className="winner-message">{gameState.players.find((player) => player.id === gameState.winnerId)?.name} wins this round.</p>
                   <button
                     type="button"
-                    className="primary-action"
+                    className="primary-action mobile-sticky-action"
                     onClick={advanceRound}
                     disabled={!canAdvanceRound || isAdvancing || Boolean(pendingAction && !isAdvancing)}
                     title={canAdvanceRound ? 'Advance to the next round' : 'Only the host can advance rounds'}

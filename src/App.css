@@ -609,6 +609,10 @@ button:focus-visible,
   animation: winnerPulse 1.15s ease-in-out infinite;
 }
 
+.mobile-sticky-action {
+  position: relative;
+}
+
 @keyframes submissionIn {
   from {
     opacity: 0;
@@ -683,6 +687,16 @@ button:focus-visible,
 
   .join-room-card h3 {
     font-size: 1.4rem;
+  }
+
+  .mobile-sticky-action {
+    position: sticky;
+    bottom: 0.75rem;
+    z-index: 20;
+    width: 100%;
+    justify-content: center;
+    margin-top: 1rem;
+    box-shadow: 0 16px 30px rgba(2, 6, 23, 0.38);
   }
 
   .table-body,
