@@ -516,7 +516,7 @@ button:focus-visible,
 }
 
 .prompt-card::after {
-  content: 'CARDS AGAINST HUMANITY';
+  content: 'CARDS AGAINST HUMANITY  |  TEAM RAYDIANT';
   position: absolute;
   left: 1.15rem;
   bottom: 1rem;
@@ -667,7 +667,7 @@ button:focus-visible,
 }
 
 .answer-card::after {
-  content: 'CARDS AGAINST HUMANITY';
+  content: 'CARDS AGAINST HUMANITY  |  TEAM RAYDIANT';
   position: absolute;
   left: 1rem;
   bottom: 1rem;
