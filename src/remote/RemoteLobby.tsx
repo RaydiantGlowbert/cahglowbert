@@ -359,8 +359,8 @@ function RemoteLobby() {
     <section className="game-panel remote-panel">
       <p className="sr-only" aria-live="polite">{liveMessage}</p>
       <div className="panel-heading">
-        <h3>Remote Multiplayer (M1)</h3>
-        <p>Create a room, join with a code, and confirm everyone appears in the waiting room.</p>
+        <h3>Online Multiplayer</h3>
+        <p>Create a room, join with a code, and start playing together.</p>
       </div>
 
       <div className="status-row remote-status-row">
@@ -453,7 +453,7 @@ function RemoteLobby() {
         </div>
       ) : (
         <div className="sidebar-card">
-          <h3>{currentRoom.phase === 'lobby' ? 'Waiting room' : 'Remote game'}: {currentRoom.roomCode}</h3>
+          <h3>{currentRoom.phase === 'lobby' ? 'Waiting room' : 'Game room'}: {currentRoom.roomCode}</h3>
           <p>{currentRoom.players.length}/15 players connected</p>
           <div className="score-stack">
             {currentRoom.players.map((player) => (
@@ -477,7 +477,7 @@ function RemoteLobby() {
                     onClick={startGame}
                     disabled={isStarting || Boolean(pendingAction && !isStarting)}
                   >
-                    {isStarting ? 'Starting...' : 'Start remote game'}
+                    {isStarting ? 'Starting...' : 'Start game'}
                   </button>
                 ) : null}
                 <button type="button" className="secondary-action" onClick={leaveRoom}>

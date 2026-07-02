@@ -8,7 +8,7 @@ function App() {
         <div className="brand">
           <span className="brand-mark">CAH</span>
           <div>
-            <p className="eyebrow">Remote multiplayer</p>
+            <p className="eyebrow">Online multiplayer</p>
             <h1>Cards Against Humanity</h1>
           </div>
         </div>
