@@ -206,6 +206,26 @@ button:focus-visible,
   margin-top: 0.4rem;
 }
 
+.remote-panel.in-game-focus {
+  transition: box-shadow 220ms ease, border-color 220ms ease, background 220ms ease;
+}
+
+.remote-panel.in-game-focus.phase-waiting-for-answers {
+  border-color: rgba(245, 158, 11, 0.42);
+  background: linear-gradient(160deg, rgba(54, 36, 9, 0.42), rgba(15, 23, 42, 0.9));
+}
+
+.remote-panel.in-game-focus.phase-waiting-for-judge {
+  border-color: rgba(56, 189, 248, 0.4);
+  background: linear-gradient(160deg, rgba(12, 49, 72, 0.4), rgba(15, 23, 42, 0.9));
+}
+
+.remote-panel.in-game-focus.phase-round-over,
+.remote-panel.in-game-focus.phase-game-over {
+  border-color: rgba(250, 204, 21, 0.42);
+  background: linear-gradient(160deg, rgba(71, 47, 10, 0.45), rgba(15, 23, 42, 0.9));
+}
+
 .remote-grid {
   margin-top: 1rem;
   display: grid;
@@ -426,7 +446,8 @@ button:focus-visible,
   gap: 0.6rem;
   min-height: 12rem;
   justify-content: center;
-  background: linear-gradient(135deg, rgba(17, 24, 39, 0.95), rgba(17, 24, 39, 0.8));
+  background: linear-gradient(135deg, rgba(2, 6, 23, 0.98), rgba(15, 23, 42, 0.92));
+  border-color: rgba(148, 163, 184, 0.3);
 }
 
 .prompt-card span,
@@ -438,7 +459,7 @@ button:focus-visible,
 }
 
 .prompt-card strong {
-  font-size: 1.2rem;
+  font-size: 1.24rem;
   color: white;
 }
 
@@ -490,6 +511,36 @@ button:focus-visible,
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
+.score-name-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.score-rank {
+  min-width: 2ch;
+  color: #fbbf24;
+  font-weight: 700;
+}
+
+.score-tag {
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.16rem 0.35rem;
+  border-radius: 999px;
+  background: rgba(56, 189, 248, 0.2);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  color: #bae6fd;
+}
+
+.score-row-winner {
+  background: rgba(250, 204, 21, 0.09);
+  border-radius: 0.55rem;
+  padding-left: 0.45rem;
+  padding-right: 0.45rem;
+}
+
 .score-row:last-child {
   border-bottom: none;
 }
@@ -508,32 +559,77 @@ button:focus-visible,
 .answer-card {
   text-align: left;
   border-radius: 1rem;
-  background: linear-gradient(145deg, rgba(248, 250, 252, 0.15), rgba(255, 255, 255, 0.08));
-  color: white;
+  border: 1px solid rgba(15, 23, 42, 0.18);
+  background: linear-gradient(145deg, #ffffff, #f8fafc);
+  color: #0f172a;
   min-height: 6rem;
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 12px 26px rgba(2, 6, 23, 0.28);
   padding: 0.9rem 1rem;
+  transition: transform 170ms ease, box-shadow 170ms ease;
+}
+
+.answer-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 16px 30px rgba(2, 6, 23, 0.34);
 }
 
 .card-label {
   font-size: 0.74rem;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: #fde68a;
+  color: #475569;
 }
 
 .answer-card.selected {
   outline: 2px solid #f59e0b;
   box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.35);
-  background: rgba(245, 158, 11, 0.16);
+  background: linear-gradient(145deg, #fef3c7, #fde68a);
 }
 
 .answer-card strong {
-  color: #fbbf24;
+  color: #111827;
   font-size: 1rem;
+}
+
+.submission-card {
+  animation: submissionIn 230ms ease both;
+}
+
+.winner-card {
+  border-color: rgba(250, 204, 21, 0.45);
+  box-shadow: 0 0 0 1px rgba(250, 204, 21, 0.22) inset;
+}
+
+.winner-message {
+  color: #fde68a;
+  font-weight: 700;
+  animation: winnerPulse 1.15s ease-in-out infinite;
+}
+
+@keyframes submissionIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes winnerPulse {
+  0%,
+  100% {
+    text-shadow: 0 0 0 rgba(251, 191, 36, 0);
+  }
+
+  50% {
+    text-shadow: 0 0 14px rgba(251, 191, 36, 0.38);
+  }
 }
 
 .answer-card.shortlisted {

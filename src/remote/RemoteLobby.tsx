@@ -182,6 +182,23 @@ function RemoteLobby() {
     errorMessage === 'This session was replaced by a newer connection. Rejoin from this device.' ||
     errorMessage === 'Saved session expired. Rejoin with room code and player name.'
   const isInGamePhase = currentRoom?.phase === 'in-game'
+  const phaseClass = gameState ? `phase-${gameState.phase}` : 'phase-lobby'
+  const rankedPlayers = useMemo(() => {
+    if (!gameState) {
+      return [] as Array<{ id: string; name: string; score: number; isJudge: boolean }>
+    }
+
+    const judgeId = gameState.players[gameState.judgeIndex]?.id
+
+    return [...gameState.players]
+      .sort((left, right) => right.score - left.score)
+      .map((player) => ({
+        id: player.id,
+        name: player.name,
+        score: player.score,
+        isJudge: player.id === judgeId
+      }))
+  }, [gameState])
 
   useEffect(() => {
     setSelectedCardIds([])
@@ -373,7 +390,7 @@ function RemoteLobby() {
   }
 
   return (
-    <section className={`game-panel remote-panel ${isInGamePhase ? 'in-game-focus' : ''}`}>
+    <section className={`game-panel remote-panel ${isInGamePhase ? 'in-game-focus' : ''} ${phaseClass}`}>
       <p className="sr-only" aria-live="polite">{liveMessage}</p>
       {showStartGuide && isInGamePhase ? (
         <div className="game-start-overlay" role="dialog" aria-modal="true" aria-labelledby="game-start-title">
@@ -552,9 +569,13 @@ function RemoteLobby() {
               <div className="sidebar-card">
                 <h3>Scores</h3>
                 <div className="score-stack">
-                  {gameState.players.map((player) => (
-                    <div key={player.id} className="score-row">
-                      <span>{player.name}</span>
+                  {rankedPlayers.map((player, index) => (
+                    <div key={player.id} className={`score-row ${gameState.winnerId === player.id ? 'score-row-winner' : ''}`}>
+                      <span className="score-name-wrap">
+                        <span className="score-rank">#{index + 1}</span>
+                        <span>{player.name}</span>
+                        {player.isJudge ? <span className="score-tag">Judge</span> : null}
+                      </span>
                       <strong>{player.score}</strong>
                     </div>
                   ))}
@@ -609,11 +630,12 @@ function RemoteLobby() {
                       <button
                         key={`submission-${index + 1}-${entry.cards.map((card) => card.id).join('-')}`}
                         type="button"
-                        className="answer-card"
+                        className="answer-card submission-card"
                         onClick={() => chooseWinner(entry.playerId)}
                         disabled={!isJudge || isChoosing || Boolean(pendingAction && !isChoosing)}
                         title={isJudge ? `Pick Submission ${index + 1} as winner` : 'Only the judge can pick a winner'}
                         aria-label={`Submission ${index + 1}${isJudge ? ', pick as winner' : ', waiting for judge'}`}
+                        style={{ animationDelay: `${index * 60}ms` }}
                       >
                         <span className="card-label">Submission {index + 1}</span>
                         <strong>{entry.cards.map((card) => card.text).join(' / ')}</strong>
@@ -624,9 +646,9 @@ function RemoteLobby() {
               ) : null}
 
               {gameState.phase === 'round-over' ? (
-                <div className="sidebar-card">
+                <div className="sidebar-card winner-card">
                   <h3>Round complete</h3>
-                  <p>{gameState.players.find((player) => player.id === gameState.winnerId)?.name} wins this round.</p>
+                  <p className="winner-message">{gameState.players.find((player) => player.id === gameState.winnerId)?.name} wins this round.</p>
                   <button
                     type="button"
                     className="primary-action"
