@@ -34,6 +34,7 @@ function RemoteLobby() {
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([])
   const [showStartGuide, setShowStartGuide] = useState(false)
   const [phaseSpotlight, setPhaseSpotlight] = useState<{ title: string; detail: string } | null>(null)
+  const [showRoomDetailsInGame, setShowRoomDetailsInGame] = useState(false)
   const previousRoomPhaseRef = useRef<'lobby' | 'in-game' | null>(null)
   const previousGamePhaseRef = useRef<string | null>(null)
   const spotlightTimerRef = useRef<number | null>(null)
@@ -299,6 +300,17 @@ function RemoteLobby() {
     }
   }, [])
 
+  useEffect(() => {
+    if (currentRoom?.phase !== 'in-game') {
+      setShowRoomDetailsInGame(false)
+      return
+    }
+
+    if (disconnectedPlayersCount > 0) {
+      setShowRoomDetailsInGame(true)
+    }
+  }, [currentRoom?.phase, disconnectedPlayersCount])
+
   const createRoom = () => {
     if (!socket || pendingAction) {
       return
@@ -504,7 +516,7 @@ function RemoteLobby() {
         </div>
       ) : null}
 
-      {currentRoom ? (
+      {currentRoom?.phase === 'lobby' ? (
         <div className="remote-room-health">
           <div className="remote-health-item">
             <span>Room</span>
@@ -595,17 +607,68 @@ function RemoteLobby() {
         <div className="sidebar-card">
           <h3>{currentRoom.phase === 'lobby' ? 'Waiting room' : 'Game room'}: {currentRoom.roomCode}</h3>
           <p>{currentRoom.players.length}/15 players connected</p>
-          <div className="score-stack">
-            {currentRoom.players.map((player) => (
-              <div key={player.id} className="score-row">
-                <span>
-                  {player.name}
-                  {player.id === currentPlayerId ? ' (you)' : ''}
-                  {player.isHost ? ' [host]' : ''}
-                </span>
+          {currentRoom.phase === 'lobby' ? (
+            <div className="score-stack">
+              {currentRoom.players.map((player) => (
+                <div key={player.id} className="score-row">
+                  <span>
+                    {player.name}
+                    {player.id === currentPlayerId ? ' (you)' : ''}
+                    {player.isHost ? ' [host]' : ''}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="in-game-room-meta">
+              <button
+                type="button"
+                className="secondary-action room-info-toggle"
+                onClick={() => setShowRoomDetailsInGame((current) => !current)}
+              >
+                {showRoomDetailsInGame ? 'Hide room info' : 'Show room info'}
+              </button>
+              <span className={`room-health-chip ${disconnectedPlayersCount > 0 ? 'warning' : ''}`}>
+                {disconnectedPlayersCount > 0
+                  ? `${disconnectedPlayersCount} disconnected`
+                  : `${connectedPlayersCount} connected`}
+              </span>
+            </div>
+          )}
+
+          {currentRoom.phase === 'in-game' && showRoomDetailsInGame ? (
+            <div className="in-game-room-drawer">
+              <div className="remote-room-health">
+                <div className="remote-health-item">
+                  <span>Room</span>
+                  <strong>{currentRoom.roomCode}</strong>
+                </div>
+                <div className="remote-health-item">
+                  <span>You</span>
+                  <strong>{playerInRoom?.isHost ? 'Host' : 'Player'}</strong>
+                </div>
+                <div className="remote-health-item">
+                  <span>Connected</span>
+                  <strong>{connectedPlayersCount}/15</strong>
+                </div>
+                <div className="remote-health-item">
+                  <span>Disconnected</span>
+                  <strong>{disconnectedPlayersCount}</strong>
+                </div>
               </div>
-            ))}
-          </div>
+              <div className="score-stack">
+                {currentRoom.players.map((player) => (
+                  <div key={player.id} className="score-row">
+                    <span>
+                      {player.name}
+                      {player.id === currentPlayerId ? ' (you)' : ''}
+                      {player.isHost ? ' [host]' : ''}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           {currentRoom.phase === 'lobby' ? (
             <>
