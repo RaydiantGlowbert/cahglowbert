@@ -11,6 +11,7 @@
   align-items: center;
   gap: 1rem;
   flex-wrap: wrap;
+  padding: 0.35rem 0 0.15rem;
 }
 
 .mode-switch {
@@ -51,7 +52,7 @@
   font-size: 0.8rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #fbbf24;
+  color: var(--color-accent);
 }
 
 .brand-mark {
@@ -61,10 +62,11 @@
   width: 3rem;
   height: 3rem;
   border-radius: 999px;
-  background: linear-gradient(135deg, #111827, #4f46e5);
+  background: linear-gradient(135deg, #0f172a, #6b3f10);
   color: white;
   font-weight: 700;
   letter-spacing: 0.08em;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
 }
 
 .eyebrow {
@@ -72,7 +74,12 @@
   font-size: 0.8rem;
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: #8b5cf6;
+  color: #d7aa4b;
+}
+
+.brand-title-row h1 {
+  font-size: clamp(2rem, 4vw, 2.7rem);
+  line-height: 0.98;
 }
 
 .hero-panel {
@@ -154,7 +161,8 @@ button {
   border: none;
   border-radius: 999px;
   padding: 0.8rem 1.2rem;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: 0.01em;
   cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
@@ -172,8 +180,9 @@ button:focus-visible,
 
 .primary-action {
   margin-top: 1rem;
-  background: #f59e0b;
+  background: linear-gradient(135deg, #f2b84b, #f59e0b);
   color: #111827;
+  box-shadow: 0 10px 22px rgba(242, 184, 75, 0.26);
 }
 
 .secondary-action {
@@ -217,8 +226,8 @@ button:focus-visible,
   margin-bottom: 0.9rem;
   padding: 0.9rem 1rem;
   border-radius: 1rem;
-  border: 1px solid rgba(251, 191, 36, 0.4);
-  background: linear-gradient(135deg, rgba(17, 24, 39, 0.96), rgba(51, 65, 85, 0.94));
+  border: 1px solid rgba(242, 184, 75, 0.4);
+  background: linear-gradient(135deg, rgba(14, 22, 35, 0.97), rgba(34, 47, 65, 0.95));
   box-shadow: 0 18px 40px rgba(2, 6, 23, 0.3);
   animation: spotlightIn 220ms ease;
 }
@@ -229,7 +238,7 @@ button:focus-visible,
   font-size: 0.72rem;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: #fbbf24;
+  color: var(--color-accent);
 }
 
 .phase-spotlight strong {
@@ -301,7 +310,7 @@ button:focus-visible,
 .join-room-card {
   border-color: rgba(251, 191, 36, 0.52);
   box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.24) inset;
-  background: linear-gradient(160deg, rgba(38, 25, 6, 0.42), rgba(30, 41, 59, 0.85));
+  background: linear-gradient(160deg, rgba(58, 40, 10, 0.42), rgba(19, 32, 51, 0.9));
 }
 
 .join-room-card h3 {
@@ -436,12 +445,13 @@ button:focus-visible,
   gap: 0.35rem;
   padding: 0.55rem 0.8rem;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.07);
   color: #f8fafc;
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .status-pill strong {
-  color: #fde68a;
+  color: var(--color-accent-soft);
 }
 
 .table-topbar h2 {
@@ -479,7 +489,7 @@ button:focus-visible,
   gap: 0.6rem;
   min-height: 12rem;
   justify-content: center;
-  background: linear-gradient(135deg, rgba(2, 6, 23, 0.98), rgba(15, 23, 42, 0.92));
+  background: linear-gradient(135deg, rgba(4, 9, 19, 0.98), rgba(18, 24, 38, 0.94));
   border-color: rgba(148, 163, 184, 0.3);
 }
 
@@ -494,6 +504,7 @@ button:focus-visible,
 .prompt-card strong {
   font-size: 1.24rem;
   color: white;
+  line-height: 1.12;
 }
 
 .table-sidebar {
@@ -506,6 +517,7 @@ button:focus-visible,
 .game-panel h3 {
   margin: 0 0 0.4rem;
   color: white;
+  font-size: 1.22rem;
 }
 
 .score-stack {
