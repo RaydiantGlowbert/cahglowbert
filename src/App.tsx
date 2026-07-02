@@ -9,7 +9,10 @@ function App() {
           <span className="brand-mark">CAH</span>
           <div>
             <p className="eyebrow">Online multiplayer</p>
-            <h1>Cards Against Humanity</h1>
+            <div className="brand-title-row">
+              <h1>Cards Against Humanity</h1>
+              <span className="brand-edition">Team Raydiant Edition</span>
+            </div>
           </div>
         </div>
       </header>

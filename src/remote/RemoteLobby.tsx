@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { io, type Socket } from 'socket.io-client'
 import type { RoomSnapshot, SocketAck } from './types'
 
@@ -32,6 +32,8 @@ function RemoteLobby() {
   const [currentRoom, setCurrentRoom] = useState<RoomSnapshot | null>(null)
   const [currentPlayerId, setCurrentPlayerId] = useState<string | null>(null)
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([])
+  const [showStartGuide, setShowStartGuide] = useState(false)
+  const previousRoomPhaseRef = useRef<'lobby' | 'in-game' | null>(null)
 
   const resetRemoteSession = (message?: string) => {
     setCurrentRoom(null)
@@ -115,7 +117,7 @@ function RemoteLobby() {
             setCurrentRoom(null)
             setCurrentPlayerId(null)
             setSelectedCardIds([])
-            setRoomCodeInput(savedSession.roomCode)
+            setRoomCodeInput('')
             setErrorMessage('Saved session expired. Rejoin with room code and player name.')
             return
           }
@@ -179,6 +181,7 @@ function RemoteLobby() {
   const shouldShowRecoveryHint =
     errorMessage === 'This session was replaced by a newer connection. Rejoin from this device.' ||
     errorMessage === 'Saved session expired. Rejoin with room code and player name.'
+  const isInGamePhase = currentRoom?.phase === 'in-game'
 
   useEffect(() => {
     setSelectedCardIds([])
@@ -209,6 +212,20 @@ function RemoteLobby() {
 
     setLiveMessage(errorMessage)
   }, [errorMessage])
+
+  useEffect(() => {
+    const currentPhase = currentRoom?.phase ?? null
+
+    if (currentPhase !== 'in-game') {
+      setShowStartGuide(false)
+    }
+
+    if (currentPhase === 'in-game' && previousRoomPhaseRef.current !== 'in-game') {
+      setShowStartGuide(true)
+    }
+
+    previousRoomPhaseRef.current = currentPhase
+  }, [currentRoom?.phase])
 
   const createRoom = () => {
     if (!socket || pendingAction) {
@@ -356,17 +373,38 @@ function RemoteLobby() {
   }
 
   return (
-    <section className="game-panel remote-panel">
+    <section className={`game-panel remote-panel ${isInGamePhase ? 'in-game-focus' : ''}`}>
       <p className="sr-only" aria-live="polite">{liveMessage}</p>
-      <div className="panel-heading">
-        <h3>Online Multiplayer</h3>
-        <p>Create a room, join with a code, and start playing together.</p>
-      </div>
+      {showStartGuide && isInGamePhase ? (
+        <div className="game-start-overlay" role="dialog" aria-modal="true" aria-labelledby="game-start-title">
+          <div className="game-start-modal">
+            <h3 id="game-start-title">How to play</h3>
+            <ol>
+              <li>One player is the judge each round.</li>
+              <li>All non-judge players submit cards for the black prompt.</li>
+              <li>The judge picks one winning anonymized submission.</li>
+              <li>The host advances to the next round.</li>
+            </ol>
+            <button type="button" className="primary-action" onClick={() => setShowStartGuide(false)}>
+              Got it
+            </button>
+          </div>
+        </div>
+      ) : null}
 
-      <div className="status-row remote-status-row">
-        <div className="status-pill">Server: <strong>{isConnected ? 'Connected' : 'Disconnected'}</strong></div>
-        <div className="status-pill">Endpoint: <strong>{SERVER_URL}</strong></div>
-      </div>
+      {!isInGamePhase ? (
+        <div className="panel-heading">
+          <h3>Online Multiplayer</h3>
+          <p>Create a room, join with a code, and start playing together.</p>
+        </div>
+      ) : null}
+
+      {!isInGamePhase ? (
+        <div className="status-row remote-status-row">
+          <div className="status-pill">Server: <strong>{isConnected ? 'Connected' : 'Disconnected'}</strong></div>
+          <div className="status-pill">Endpoint: <strong>{SERVER_URL}</strong></div>
+        </div>
+      ) : null}
 
       {currentRoom ? (
         <div className="remote-room-health">
@@ -399,7 +437,7 @@ function RemoteLobby() {
 
       {!currentRoom ? (
         <div className="remote-grid">
-          <div className="sidebar-card">
+          <div className="sidebar-card create-room-card">
             <h3>Create room</h3>
             <label className="name-input" htmlFor="create-name">
               Your name
@@ -420,7 +458,7 @@ function RemoteLobby() {
             </button>
           </div>
 
-          <div className="sidebar-card">
+          <div className="sidebar-card join-room-card">
             <h3>Join room</h3>
             <label className="name-input" htmlFor="room-code">
               Room code
@@ -428,10 +466,11 @@ function RemoteLobby() {
                 id="room-code"
                 value={roomCodeInput}
                 onChange={(event) => setRoomCodeInput(event.target.value.toUpperCase())}
-                placeholder="ABC123"
+                placeholder=""
                 maxLength={6}
               />
             </label>
+            <p className="room-code-hint"><em>Enter room code provided by your host.</em></p>
             <label className="name-input" htmlFor="join-name">
               Your name
               <input
