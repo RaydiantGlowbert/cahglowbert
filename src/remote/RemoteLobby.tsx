@@ -490,10 +490,10 @@ function RemoteLobby() {
           <div className="game-start-modal">
             <h3 id="game-start-title">How to play</h3>
             <ol>
-              <li>One player is the judge each round.</li>
-              <li>All non-judge players submit cards for the black prompt.</li>
-              <li>The judge picks one winning anonymized submission.</li>
-              <li>The host advances to the next round.</li>
+              <li>Each round, one player becomes the judge and gets to be gloriously opinionated.</li>
+              <li>Everyone else submits their funniest card combo for the black prompt.</li>
+              <li>The judge reads anonymous submissions and crowns one chaotic winner.</li>
+              <li>Laugh, roast gently, and get ready for the next absurd prompt.</li>
             </ol>
             <button type="button" className="primary-action" onClick={() => setShowStartGuide(false)}>
               Got it
