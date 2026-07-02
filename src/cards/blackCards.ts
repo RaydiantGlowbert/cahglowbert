@@ -16,7 +16,7 @@ export const blackCards = [
   { id: "black-015", text: "Glowbert's biggest weakness is ______.", type: 'black' as const, pick: 1 },
   { id: "black-016", text: "I've got 99 problems but ______ ain't one.", type: 'black' as const, pick: 1 },
   { id: "black-017", text: "50% of all student calls end with ______.", type: 'black' as const, pick: 1 },
-  { id: "black-018", text: "I don't always ______, but I definitely do after speaking with a 0-TP student.", type: 'black' as const, pick: 1 },
+  { id: "black-018", text: "I don't always ______, but I definitely do after speaking with a 0-CU student.", type: 'black' as const, pick: 1 },
   { id: "black-019", text: "A mentor's best friend is ______.", type: 'black' as const, pick: 1 },
   { id: "black-020", text: "My student graduated and now I'm ______.", type: 'black' as const, pick: 1 },
   { id: "black-021", text: "My student withdrew because ______.", type: 'black' as const, pick: 1 },
