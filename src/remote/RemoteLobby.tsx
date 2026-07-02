@@ -438,7 +438,10 @@ function RemoteLobby() {
       {!currentRoom ? (
         <div className="remote-grid">
           <div className="sidebar-card create-room-card">
-            <h3>Create room</h3>
+            <div className="create-room-heading">
+              <h3>Create room</h3>
+              <span className="create-room-badge">Host only</span>
+            </div>
             <label className="name-input" htmlFor="create-name">
               Your name
               <input
