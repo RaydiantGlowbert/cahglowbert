@@ -18,11 +18,7 @@ type SavedSession = {
   sessionToken: string
 }
 
-type RemoteLobbyProps = {
-  onBackToLocal: () => void
-}
-
-function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
+function RemoteLobby() {
   const [socket, setSocket] = useState<Socket | null>(null)
   const [isConnected, setIsConnected] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -487,9 +483,6 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
                 <button type="button" className="secondary-action" onClick={leaveRoom}>
                   Leave room
                 </button>
-                <button type="button" className="secondary-action" onClick={onBackToLocal}>
-                  Back to local mode
-                </button>
               </div>
 
               {playerInRoom?.isHost ? (
@@ -623,9 +616,6 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
               <div className="action-row">
                 <button type="button" className="secondary-action" onClick={leaveRoom}>
                   Leave room
-                </button>
-                <button type="button" className="secondary-action" onClick={onBackToLocal}>
-                  Back to local mode
                 </button>
               </div>
             </div>
