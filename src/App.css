@@ -217,14 +217,33 @@ button:focus-visible,
   opacity: 0.82;
 }
 
+.create-room-card h3 {
+  font-size: 1rem;
+  color: #e2e8f0;
+}
+
 .create-room-card .primary-action {
   transform: scale(0.95);
   transform-origin: left center;
 }
 
 .join-room-card {
-  border-color: rgba(251, 191, 36, 0.35);
-  box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.16) inset;
+  border-color: rgba(251, 191, 36, 0.52);
+  box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.24) inset;
+  background: linear-gradient(160deg, rgba(38, 25, 6, 0.42), rgba(30, 41, 59, 0.85));
+}
+
+.join-room-card h3 {
+  font-size: 1.3rem;
+  color: #fde68a;
+}
+
+.join-room-card .name-input input {
+  border-color: rgba(251, 191, 36, 0.42);
+}
+
+.join-room-card .primary-action {
+  box-shadow: 0 10px 24px rgba(245, 158, 11, 0.35);
 }
 
 .room-code-hint {
@@ -538,6 +557,18 @@ button:focus-visible,
 
   .remote-grid {
     grid-template-columns: 1fr;
+  }
+
+  .join-room-card {
+    order: 1;
+  }
+
+  .create-room-card {
+    order: 2;
+  }
+
+  .join-room-card h3 {
+    font-size: 1.4rem;
   }
 
   .table-body,
