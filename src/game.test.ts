@@ -22,6 +22,7 @@ describe('game flow', () => {
     expect(blackCards.length).toBeGreaterThan(0)
     expect(state.blackCard?.type).toBe('black')
     expect(state.blackCard?.pick).toBe(1)
+    expect(state.usedBlackCardIds).toContain(state.blackCard?.id)
     expect(state.phase).toBe('waiting-for-answers')
   })
 
@@ -43,6 +44,28 @@ describe('game flow', () => {
     expect(judged.players[0].score).toBe(1)
     expect(advanced.phase).toBe('waiting-for-answers')
     expect(advanced.round).toBe(2)
+    expect(advanced.players[0].hand).toHaveLength(7)
+    expect(advanced.players[1].hand).toHaveLength(7)
+  })
+
+  it('deals unique white cards across players', () => {
+    const state = createInitialGameState(['Ada', 'Grace', 'Linus', 'Margaret'])
+    const allHandCardIds = state.players.flatMap((player) => player.hand.map((card) => card.id))
+
+    expect(new Set(allHandCardIds).size).toBe(allHandCardIds.length)
+  })
+
+  it('refills hands without duplicating white cards between players', () => {
+    const state = createInitialGameState(['Ada', 'Grace', 'Linus'])
+    const firstSubmission = submitAnswer(state, 'player-2', [state.players[1].hand[0].id])
+    const secondSubmission = submitAnswer(firstSubmission, 'player-3', [firstSubmission.players[2].hand[0].id])
+    const judged = chooseWinner(secondSubmission, 'player-2')
+    const advanced = nextRound(judged)
+    const allHandCardIds = advanced.players.flatMap((player) => player.hand.map((card) => card.id))
+
+    expect(new Set(allHandCardIds).size).toBe(allHandCardIds.length)
+    expect(advanced.players[1].hand).toHaveLength(state.handSize)
+    expect(advanced.players[2].hand).toHaveLength(state.handSize)
   })
 
   it('records round history when a winner is picked', () => {

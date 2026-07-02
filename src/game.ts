@@ -39,6 +39,7 @@ export type GameState = {
   players: Player[]
   judgeIndex: number
   blackCard: Card | null
+  usedBlackCardIds: string[]
   round: number
   phase: 'waiting-for-answers' | 'waiting-for-judge' | 'round-over' | 'game-over'
   submittedAnswers: Array<{ playerId: string; cards: Card[] }>
@@ -165,28 +166,60 @@ function getNextPendingAnsweringPlayerId(
   return nonJudgePlayerIds.find((playerId) => !submittedPlayerIds.has(playerId)) ?? null
 }
 
+function drawUniqueWhiteCards(
+  deck: Card[],
+  usedCardIds: Set<string>,
+  count: number
+): Card[] {
+  const availableCards = shuffleCards(deck.filter((card) => !usedCardIds.has(card.id)))
+  return availableCards.slice(0, count)
+}
+
+function refillHands(players: Player[], deck: Card[], handSize: number): Player[] {
+  const usedCardIds = new Set(players.flatMap((player) => player.hand.map((card) => card.id)))
+
+  return players.map((player) => {
+    const cardsNeeded = Math.max(0, handSize - player.hand.length)
+    if (cardsNeeded === 0) {
+      return player
+    }
+
+    const drawnCards = drawUniqueWhiteCards(deck, usedCardIds, cardsNeeded)
+    drawnCards.forEach((card) => usedCardIds.add(card.id))
+
+    return {
+      ...player,
+      hand: [...player.hand, ...drawnCards]
+    }
+  })
+}
+
+function drawNextBlackCard(usedBlackCardIds: string[]): { blackCard: Card | null; usedBlackCardIds: string[] } {
+  const usedIds = new Set(usedBlackCardIds)
+  let availableBlackCards = initialBlackCards.filter((card) => !usedIds.has(card.id))
+
+  if (availableBlackCards.length === 0) {
+    availableBlackCards = [...initialBlackCards]
+    usedIds.clear()
+  }
+
+  const [nextBlackCard] = shuffleCards(availableBlackCards)
+  if (!nextBlackCard) {
+    return { blackCard: null, usedBlackCardIds: [] }
+  }
+
+  return {
+    blackCard: nextBlackCard,
+    usedBlackCardIds: [...usedIds, nextBlackCard.id]
+  }
+}
+
 export function dealHands(players: Player[], deck: Card[], handSize = DEFAULT_HAND_SIZE): Player[] {
-  const deckPool = shuffleCards(deck)
-  const dealtPlayers: Player[] = players.map((player) => ({ ...player, hand: [] as Card[] }))
-
-  const drawCard = () => {
-    if (deckPool.length === 0) {
-      deckPool.push(...shuffleCards(deck))
-    }
-
-    return deckPool.shift()
-  }
-
-  for (let i = 0; i < handSize; i += 1) {
-    for (const player of dealtPlayers) {
-      const nextCard = drawCard()
-      if (nextCard) {
-        player.hand.push(nextCard)
-      }
-    }
-  }
-
-  return dealtPlayers
+  return refillHands(
+    players.map((player) => ({ ...player, hand: [] as Card[] })),
+    deck,
+    handSize
+  )
 }
 
 export function createInitialGameState(names: string[]): GameState {
@@ -200,10 +233,12 @@ export function createInitialGameState(names: string[]): GameState {
   const maxRounds = largeTableMode ? QUICK_MODE_MAX_ROUNDS : DEFAULT_MAX_ROUNDS
   const players = dealHands(createPlayers(cappedNames), initialWhiteCards, handSize)
   const judgeIndex = 0
+  const { blackCard, usedBlackCardIds } = drawNextBlackCard([])
   return {
     players,
     judgeIndex,
-    blackCard: initialBlackCards[0],
+    blackCard,
+    usedBlackCardIds,
     round: 1,
     phase: 'waiting-for-answers',
     submittedAnswers: [],
@@ -305,12 +340,15 @@ export function endGame(state: GameState): GameState {
 export function nextRound(state: GameState): GameState {
   const nextRoundNumber = state.round + 1
   const nextJudgeIndex = (state.judgeIndex + 1) % state.players.length
-  const nextBlackCard = initialBlackCards[(nextRoundNumber - 1) % initialBlackCards.length] ?? initialBlackCards[0]
+  const replenishedPlayers = refillHands(state.players, initialWhiteCards, state.handSize)
+  const { blackCard: nextBlackCard, usedBlackCardIds } = drawNextBlackCard(state.usedBlackCardIds)
 
   return {
     ...state,
+    players: replenishedPlayers,
     judgeIndex: nextJudgeIndex,
     blackCard: nextBlackCard,
+    usedBlackCardIds,
     round: nextRoundNumber,
     phase: 'waiting-for-answers',
     submittedAnswers: [],
