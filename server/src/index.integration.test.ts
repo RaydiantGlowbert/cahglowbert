@@ -795,7 +795,7 @@ describe('remote multiplayer server integration', () => {
     }
   })
 
-  it('rejects submit-answer from non-answering player', async () => {
+  it('rejects submit-answer from the judge', async () => {
     const setup = await setupTwoPlayerRoom()
     try {
       const hostInGame = setup.hostInGame
@@ -816,32 +816,34 @@ describe('remote multiplayer server integration', () => {
         return
       }
 
+      const judgePlayerId = hostInGame.gameState.players[hostInGame.gameState.judgeIndex]?.id
       const answeringPlayerId = hostInGame.gameState.answeringPlayerId
+      expect(judgePlayerId).toBeTruthy()
       expect(answeringPlayerId).toBeTruthy()
-      if (!answeringPlayerId) {
+      if (!judgePlayerId || !answeringPlayerId) {
         return
       }
 
       const answeringSocket = hostPlayer.gamePlayerId === answeringPlayerId ? setup.host : setup.guest
-      const nonAnsweringSocket = answeringSocket === setup.host ? setup.guest : setup.host
-      const nonAnsweringView = answeringSocket === setup.host ? guestInGame : hostInGame
+      const judgeSocket = hostPlayer.gamePlayerId === judgePlayerId ? setup.host : setup.guest
+      const judgeView = judgeSocket === setup.host ? hostInGame : guestInGame
       const answeringView = answeringSocket === setup.host ? hostInGame : guestInGame
 
-      const nonAnsweringHand = nonAnsweringView.gameState.players.find(
-        (player) => player.id !== answeringPlayerId
+      const judgeHand = judgeView.gameState.players.find(
+        (player) => player.id === judgePlayerId
       )?.hand
       const answeringHand = answeringView.gameState.players.find(
         (player) => player.id === answeringPlayerId
       )?.hand
 
-      expect(nonAnsweringHand?.length).toBeGreaterThan(0)
+      expect(judgeHand?.length).toBeGreaterThan(0)
       expect(answeringHand?.length).toBeGreaterThan(0)
-      if (!nonAnsweringHand || !answeringHand || nonAnsweringHand.length === 0 || answeringHand.length === 0) {
+      if (!judgeHand || !answeringHand || judgeHand.length === 0 || answeringHand.length === 0) {
         return
       }
 
-      const invalidSubmitAck = await emitAck<BoolAck>(nonAnsweringSocket, 'submit-answer', {
-        cardIds: [nonAnsweringHand[0].id]
+      const invalidSubmitAck = await emitAck<BoolAck>(judgeSocket, 'submit-answer', {
+        cardIds: [judgeHand[0].id]
       })
       expect(invalidSubmitAck.ok).toBe(false)
       if (invalidSubmitAck.ok) {
@@ -860,8 +862,8 @@ describe('remote multiplayer server integration', () => {
       })
       expect(validSubmitAck.ok).toBe(true)
 
-      const judgeView = await judgeViewPromise
-      expect(judgeView.gameState?.phase).toBe('waiting-for-judge')
+      const judgePhaseView = await judgeViewPromise
+      expect(judgePhaseView.gameState?.phase).toBe('waiting-for-judge')
     } finally {
       disconnectSockets(setup.host, setup.guest)
     }

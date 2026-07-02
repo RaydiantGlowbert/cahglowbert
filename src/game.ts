@@ -154,26 +154,15 @@ function getNonJudgePlayerIds(players: Player[], judgeIndex: number): string[] {
   return players.filter((_, index) => index !== judgeIndex).map((player) => player.id)
 }
 
-function getNextAnsweringPlayerId(
+function getNextPendingAnsweringPlayerId(
   players: Player[],
   judgeIndex: number,
-  currentPlayerId: string | null
+  submittedAnswers: Array<{ playerId: string; cards: Card[] }>
 ): string | null {
   const nonJudgePlayerIds = getNonJudgePlayerIds(players, judgeIndex)
-  if (nonJudgePlayerIds.length === 0) {
-    return null
-  }
+  const submittedPlayerIds = new Set(submittedAnswers.map((entry) => entry.playerId))
 
-  if (!currentPlayerId) {
-    return nonJudgePlayerIds[0] ?? null
-  }
-
-  const currentIndex = nonJudgePlayerIds.indexOf(currentPlayerId)
-  if (currentIndex === -1) {
-    return nonJudgePlayerIds[0] ?? null
-  }
-
-  return nonJudgePlayerIds[(currentIndex + 1) % nonJudgePlayerIds.length] ?? null
+  return nonJudgePlayerIds.find((playerId) => !submittedPlayerIds.has(playerId)) ?? null
 }
 
 export function dealHands(players: Player[], deck: Card[], handSize = DEFAULT_HAND_SIZE): Player[] {
@@ -219,7 +208,7 @@ export function createInitialGameState(names: string[]): GameState {
     phase: 'waiting-for-answers',
     submittedAnswers: [],
     winnerId: null,
-    answeringPlayerId: getNextAnsweringPlayerId(players, judgeIndex, null),
+    answeringPlayerId: getNextPendingAnsweringPlayerId(players, judgeIndex, []),
     roundHistory: [],
     handSize,
     maxRounds,
@@ -232,11 +221,12 @@ export function submitAnswer(state: GameState, playerId: string, cardIds: string
   const requiredPick = state.blackCard?.pick ?? 1
   const uniqueCardIds = Array.from(new Set(cardIds))
   const selectedCards = player?.hand.filter((card) => uniqueCardIds.includes(card.id)) ?? []
+  const hasAlreadySubmitted = state.submittedAnswers.some((entry) => entry.playerId === playerId)
 
   if (
     !player ||
     state.phase !== 'waiting-for-answers' ||
-    state.answeringPlayerId !== playerId ||
+    hasAlreadySubmitted ||
     state.players[state.judgeIndex]?.id === playerId ||
     uniqueCardIds.length !== requiredPick ||
     selectedCards.length !== requiredPick
@@ -263,7 +253,7 @@ export function submitAnswer(state: GameState, playerId: string, cardIds: string
     phase: allPlayersAnswered ? 'waiting-for-judge' : 'waiting-for-answers',
     answeringPlayerId: allPlayersAnswered
       ? null
-      : getNextAnsweringPlayerId(state.players, state.judgeIndex, playerId)
+      : getNextPendingAnsweringPlayerId(state.players, state.judgeIndex, nextSubmittedAnswers)
   }
 }
 
@@ -338,6 +328,6 @@ export function nextRound(state: GameState): GameState {
     phase: 'waiting-for-answers',
     submittedAnswers: [],
     winnerId: null,
-    answeringPlayerId: getNextAnsweringPlayerId(state.players, nextJudgeIndex, null)
+    answeringPlayerId: getNextPendingAnsweringPlayerId(state.players, nextJudgeIndex, [])
   }
 }

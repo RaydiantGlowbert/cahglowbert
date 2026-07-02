@@ -165,9 +165,12 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
   const isJudge = Boolean(
     gameState && playerInRoom?.gamePlayerId && gameState.players[gameState.judgeIndex]?.id === playerInRoom.gamePlayerId
   )
-  const isActiveAnsweringPlayer = Boolean(
-    gameState && playerInRoom?.gamePlayerId && gameState.answeringPlayerId === playerInRoom.gamePlayerId
+  const hasSubmittedThisRound = Boolean(
+    gameState &&
+      playerInRoom?.gamePlayerId &&
+      gameState.submittedAnswers.some((entry) => entry.playerId === playerInRoom.gamePlayerId)
   )
+  const canSubmitThisRound = Boolean(gameState && playerInRoom?.gamePlayerId && !isJudge && !hasSubmittedThisRound)
   const canAdvanceRound = Boolean(playerInRoom?.isHost)
   const connectedPlayersCount = currentRoom?.players.filter((player) => player.connected).length ?? 0
   const disconnectedPlayersCount = currentRoom?.players.filter((player) => !player.connected).length ?? 0
@@ -525,8 +528,8 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
 
               {gameState.phase === 'waiting-for-answers' ? (
                 <div className="sidebar-card">
-                  <h3>{isActiveAnsweringPlayer ? 'Your turn to submit' : 'Waiting for answers'}</h3>
-                  {isActiveAnsweringPlayer && currentGamePlayer ? (
+                  <h3>{canSubmitThisRound ? 'Submit your answer' : 'Waiting for answers'}</h3>
+                  {canSubmitThisRound && currentGamePlayer ? (
                     <>
                       <div className="answer-grid hand-grid">
                         {currentGamePlayer.hand.map((card) => (
@@ -551,7 +554,13 @@ function RemoteLobby({ onBackToLocal }: RemoteLobbyProps) {
                       </button>
                     </>
                   ) : (
-                    <p className="setup-warning">Waiting for {gameState.answeringPlayerId ? 'the active player to submit.' : 'players to submit.'}</p>
+                    <p className="setup-warning">
+                      {isJudge
+                        ? 'Waiting for players to submit.'
+                        : hasSubmittedThisRound
+                          ? 'Submission received. Waiting for other players.'
+                          : 'Waiting for players to submit.'}
+                    </p>
                   )}
                 </div>
               ) : null}
