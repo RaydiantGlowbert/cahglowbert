@@ -6,6 +6,7 @@ import {
   type Card,
   chooseWinner,
   createInitialGameState,
+  endGame,
   nextRound,
   shuffleCards,
   submitAnswer,
@@ -115,7 +116,7 @@ describe('game flow', () => {
     expect(shuffled.some((card) => card.id === 'white-001')).toBe(true)
   })
 
-  it('ends the game after the final round', () => {
+  it('continues beyond the previous round cap until explicitly ended', () => {
     const state = createInitialGameState(['Ada', 'Grace'])
     let nextState = state
 
@@ -123,8 +124,17 @@ describe('game flow', () => {
       nextState = nextRound(nextState)
     }
 
-    expect(nextState.phase).toBe('game-over')
+    expect(nextState.phase).toBe('waiting-for-answers')
     expect(nextState.round).toBe(5)
+  })
+
+  it('ends the game when explicitly requested', () => {
+    const state = createInitialGameState(['Ada', 'Grace'])
+    const ended = endGame(state)
+
+    expect(ended.phase).toBe('game-over')
+    expect(ended.answeringPlayerId).toBeNull()
+    expect(ended.submittedAnswers).toEqual([])
   })
 
   it('enables quick mode for large tables', () => {

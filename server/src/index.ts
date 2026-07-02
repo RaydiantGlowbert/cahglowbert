@@ -8,6 +8,7 @@ import {
   type Card,
   chooseWinner,
   createInitialGameState,
+  endGame,
   nextRound,
   submitAnswer,
   type GameState
@@ -724,6 +725,68 @@ io.on('connection', (socket) => {
 
       const ack = { ok: true } as const
       cacheActionAck(requester, 'choose-winner', payload, ack)
+      callback(ack)
+      broadcastRoom(room)
+    }
+  )
+
+  socket.on(
+    'end-game',
+    (
+      payloadOrCallback:
+        | { actionId?: string }
+        | ((ack: { ok: true } | { ok: false; error: string }) => void),
+      maybeCallback?: (ack: { ok: true } | { ok: false; error: string }) => void
+    ) => {
+      const payload = typeof payloadOrCallback === 'function' ? {} : payloadOrCallback
+      const callback = typeof payloadOrCallback === 'function' ? payloadOrCallback : maybeCallback
+      if (!callback) {
+        return
+      }
+
+      const roomCode = socket.data.roomCode as string | undefined
+      const room = roomCode ? rooms.get(roomCode) : undefined
+
+      if (!room || room.phase !== 'in-game' || !room.gameState) {
+        callback({ ok: false, error: 'Game is not active.' })
+        return
+      }
+
+      const requester = room.players.get(socket.data.playerId as string | undefined ?? '')
+      if (!requester || !requester.connected || requester.socketId !== socket.id) {
+        callback({ ok: false, error: 'Session is no longer active.' })
+        return
+      }
+
+      const cachedAck = getCachedActionAck<{ ok: true } | { ok: false; error: string }>(
+        requester,
+        'end-game',
+        payload
+      )
+      if (cachedAck) {
+        callback(cachedAck)
+        return
+      }
+
+      if (!requester.isHost) {
+        const ack = { ok: false, error: 'Only the host can end the game.' } as const
+        cacheActionAck(requester, 'end-game', payload, ack)
+        callback(ack)
+        return
+      }
+
+      if (room.gameState.phase === 'game-over') {
+        const ack = { ok: false, error: 'Game has already ended.' } as const
+        cacheActionAck(requester, 'end-game', payload, ack)
+        callback(ack)
+        return
+      }
+
+      room.gameState = endGame(room.gameState)
+      persistRooms()
+
+      const ack = { ok: true } as const
+      cacheActionAck(requester, 'end-game', payload, ack)
       callback(ack)
       broadcastRoom(room)
     }

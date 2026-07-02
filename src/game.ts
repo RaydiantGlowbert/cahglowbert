@@ -292,33 +292,20 @@ export function chooseWinner(state: GameState, winnerId: string): GameState {
   }
 }
 
+export function endGame(state: GameState): GameState {
+  return {
+    ...state,
+    phase: 'game-over',
+    submittedAnswers: [],
+    answeringPlayerId: null,
+    winnerId: null
+  }
+}
+
 export function nextRound(state: GameState): GameState {
   const nextRoundNumber = state.round + 1
   const nextJudgeIndex = (state.judgeIndex + 1) % state.players.length
   const nextBlackCard = initialBlackCards[(nextRoundNumber - 1) % initialBlackCards.length] ?? initialBlackCards[0]
-
-  if (nextRoundNumber > state.maxRounds) {
-    return {
-      ...state,
-      phase: 'game-over',
-      submittedAnswers: [],
-      answeringPlayerId: null,
-      winnerId: null
-    }
-  }
-
-  if (nextRoundNumber >= state.maxRounds) {
-    return {
-      ...state,
-      judgeIndex: nextJudgeIndex,
-      blackCard: nextBlackCard,
-      round: nextRoundNumber,
-      phase: 'game-over',
-      submittedAnswers: [],
-      winnerId: null,
-      answeringPlayerId: null
-    }
-  }
 
   return {
     ...state,

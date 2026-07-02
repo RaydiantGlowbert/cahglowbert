@@ -1260,6 +1260,33 @@ describe('remote multiplayer server integration', () => {
     }
   })
 
+  it('allows only the host to end an in-progress game', async () => {
+    const setup = await setupTwoPlayerRoom()
+
+    try {
+      const nonHostEndAck = await emitAck<BoolAck>(setup.guest, 'end-game')
+      expect(nonHostEndAck.ok).toBe(false)
+      if (nonHostEndAck.ok) {
+        return
+      }
+
+      expect(nonHostEndAck.error).toBe('Only the host can end the game.')
+
+      const gameOverViewPromise = waitForRoomUpdated(
+        setup.host,
+        (room) => room.gameState?.phase === 'game-over'
+      )
+
+      const hostEndAck = await emitAck<BoolAck>(setup.host, 'end-game')
+      expect(hostEndAck.ok).toBe(true)
+
+      const gameOverView = await gameOverViewPromise
+      expect(gameOverView.gameState?.phase).toBe('game-over')
+    } finally {
+      disconnectSockets(setup.host, setup.guest)
+    }
+  })
+
   it('allows transferred host to advance round after original host disconnects', async () => {
     const setup = await setupTwoPlayerRoom()
 

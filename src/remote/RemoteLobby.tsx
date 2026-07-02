@@ -24,7 +24,7 @@ function RemoteLobby() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [liveMessage, setLiveMessage] = useState('')
   const [pendingAction, setPendingAction] = useState<
-    'create' | 'join' | 'start' | 'submit' | 'choose' | 'advance' | null
+    'create' | 'join' | 'start' | 'submit' | 'choose' | 'advance' | 'end' | null
   >(null)
   const [createName, setCreateName] = useState('')
   const [joinName, setJoinName] = useState('')
@@ -181,6 +181,7 @@ function RemoteLobby() {
   const isSubmitting = pendingAction === 'submit'
   const isChoosing = pendingAction === 'choose'
   const isAdvancing = pendingAction === 'advance'
+  const isEnding = pendingAction === 'end'
   const shouldShowRecoveryHint =
     errorMessage === 'This session was replaced by a newer connection. Rejoin from this device.' ||
     errorMessage === 'Saved session expired. Rejoin with room code and player name.'
@@ -425,6 +426,25 @@ function RemoteLobby() {
 
       if (!ack.ok) {
         handleActionError(ack.error, 'Could not advance round.')
+      }
+    })
+  }
+
+  const endCurrentGame = () => {
+    if (!socket || pendingAction || !playerInRoom?.isHost) {
+      return
+    }
+
+    if (!window.confirm('End the current game for everyone?')) {
+      return
+    }
+
+    setPendingAction('end')
+    socket.emit('end-game', { actionId: createActionId() }, (ack: { ok: boolean; error?: string }) => {
+      setPendingAction(null)
+
+      if (!ack.ok) {
+        handleActionError(ack.error, 'Could not end game.')
       }
     })
   }
@@ -717,11 +737,7 @@ function RemoteLobby() {
                     disabled={!canAdvanceRound || isAdvancing || Boolean(pendingAction && !isAdvancing)}
                     title={canAdvanceRound ? 'Advance to the next round' : 'Only the host can advance rounds'}
                   >
-                    {isAdvancing
-                      ? 'Advancing...'
-                      : gameState.round >= gameState.maxRounds
-                        ? 'Finish game'
-                        : 'Next round'}
+                    {isAdvancing ? 'Advancing...' : 'Next round'}
                   </button>
                   {!canAdvanceRound ? <p className="setup-warning">Waiting for host to advance the round.</p> : null}
                 </div>
@@ -739,6 +755,16 @@ function RemoteLobby() {
               ) : null}
 
               <div className="action-row">
+                {playerInRoom?.isHost && gameState.phase !== 'game-over' ? (
+                  <button
+                    type="button"
+                    className="secondary-action"
+                    onClick={endCurrentGame}
+                    disabled={isEnding || Boolean(pendingAction && !isEnding)}
+                  >
+                    {isEnding ? 'Ending...' : 'End game'}
+                  </button>
+                ) : null}
                 <button type="button" className="secondary-action" onClick={leaveRoom}>
                   Leave room
                 </button>
