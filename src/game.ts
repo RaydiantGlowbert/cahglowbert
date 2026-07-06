@@ -43,12 +43,14 @@ export type GameState = {
   round: number
   phase: 'waiting-for-answers' | 'waiting-for-judge' | 'round-over' | 'game-over'
   submittedAnswers: Array<{ playerId: string; cards: Card[] }>
+  tradedPlayerIds: string[]
   winnerId: string | null
   answeringPlayerId: string | null
   roundHistory: RoundHistoryEntry[]
   handSize: number
   maxRounds: number
   largeTableMode: boolean
+  doublePointsEnabled: boolean
 }
 
 export const initialBlackCards: Card[] = blackCards
@@ -242,12 +244,14 @@ export function createInitialGameState(names: string[]): GameState {
     round: 1,
     phase: 'waiting-for-answers',
     submittedAnswers: [],
+    tradedPlayerIds: [],
     winnerId: null,
     answeringPlayerId: getNextPendingAnsweringPlayerId(players, judgeIndex, []),
     roundHistory: [],
     handSize,
     maxRounds,
-    largeTableMode
+    largeTableMode,
+    doublePointsEnabled: false
   }
 }
 
@@ -292,6 +296,44 @@ export function submitAnswer(state: GameState, playerId: string, cardIds: string
   }
 }
 
+export function tradeCards(state: GameState, playerId: string, cardIds: string[]): GameState {
+  const player = state.players.find((entry) => entry.id === playerId)
+  const uniqueCardIds = Array.from(new Set(cardIds))
+  const selectedCards = player?.hand.filter((card) => uniqueCardIds.includes(card.id)) ?? []
+  const hasAlreadySubmitted = state.submittedAnswers.some((entry) => entry.playerId === playerId)
+  const hasAlreadyTraded = state.tradedPlayerIds.includes(playerId)
+
+  if (
+    !player ||
+    state.phase !== 'waiting-for-answers' ||
+    hasAlreadySubmitted ||
+    hasAlreadyTraded ||
+    state.players[state.judgeIndex]?.id === playerId ||
+    uniqueCardIds.length < 1 ||
+    uniqueCardIds.length > 3 ||
+    selectedCards.length !== uniqueCardIds.length
+  ) {
+    return state
+  }
+
+  const updatedPlayers = state.players.map((entry) =>
+    entry.id === playerId
+      ? {
+          ...entry,
+          hand: entry.hand.filter((card) => !uniqueCardIds.includes(card.id))
+        }
+      : entry
+  )
+
+  const refilledPlayers = refillHands(updatedPlayers, initialWhiteCards, state.handSize)
+
+  return {
+    ...state,
+    players: refilledPlayers,
+    tradedPlayerIds: [...state.tradedPlayerIds, playerId]
+  }
+}
+
 export function chooseWinner(state: GameState, winnerId: string): GameState {
   if (state.phase !== 'waiting-for-judge') {
     return state
@@ -303,7 +345,9 @@ export function chooseWinner(state: GameState, winnerId: string): GameState {
   }
 
   const updatedPlayers = state.players.map((player) =>
-    player.id === winnerId ? { ...player, score: player.score + 1 } : player
+    player.id === winnerId
+      ? { ...player, score: player.score + (state.doublePointsEnabled ? 2 : 1) }
+      : player
   )
 
   const winningSubmission = state.submittedAnswers.find((answer) => answer.playerId === winnerId)
@@ -352,7 +396,9 @@ export function nextRound(state: GameState): GameState {
     round: nextRoundNumber,
     phase: 'waiting-for-answers',
     submittedAnswers: [],
+    tradedPlayerIds: [],
     winnerId: null,
+    doublePointsEnabled: false,
     answeringPlayerId: getNextPendingAnsweringPlayerId(state.players, nextJudgeIndex, [])
   }
 }

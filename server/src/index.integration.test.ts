@@ -2124,6 +2124,7 @@ describe('remote multiplayer server integration', () => {
         setup.judgeSocket.disconnect()
 
         const rejoinedJudgeSocket = await connectClient()
+
         try {
           const rejoinAck = await emitAck<SocketAck>(rejoinedJudgeSocket, 'rejoin-room', {
             roomCode: setup.createAck.room.roomCode,
@@ -2166,4 +2167,146 @@ describe('remote multiplayer server integration', () => {
     },
     25000
   )
+
+  it('allows the host to enable double points for a round', async () => {
+    const setup = await setupTwoPlayerRoom()
+    try {
+      const hostInGame = setup.hostInGame
+      const guestInGame = setup.guestInGame
+
+      expect(hostInGame).toBeTruthy()
+      expect(guestInGame).toBeTruthy()
+      if (!hostInGame || !guestInGame || !hostInGame.gameState || !guestInGame.gameState) {
+        return
+      }
+
+      const hostPlayer = hostInGame.players.find((player) => player.id === setup.createAck.playerId)
+      const guestPlayer = guestInGame.players.find((player) => player.id === setup.joinAck.playerId)
+
+      expect(hostPlayer?.gamePlayerId).toBeTruthy()
+      expect(guestPlayer?.gamePlayerId).toBeTruthy()
+      if (!hostPlayer?.gamePlayerId || !guestPlayer?.gamePlayerId) {
+        return
+      }
+
+      const judgePlayerId = hostInGame.gameState.players[hostInGame.gameState.judgeIndex]?.id
+      const answeringPlayerId = hostInGame.gameState.answeringPlayerId
+      expect(judgePlayerId).toBeTruthy()
+      expect(answeringPlayerId).toBeTruthy()
+      if (!judgePlayerId || !answeringPlayerId) {
+        return
+      }
+
+      const judgeSocket = hostPlayer.gamePlayerId === judgePlayerId ? setup.host : setup.guest
+      const answeringSocket = hostPlayer.gamePlayerId === answeringPlayerId ? setup.host : setup.guest
+      const answeringRoom = answeringSocket === setup.host ? hostInGame : guestInGame
+      const answeringHand = answeringRoom.gameState.players.find((player) => player.id === answeringPlayerId)?.hand
+
+      expect(answeringHand?.length).toBeGreaterThan(0)
+      if (!answeringHand || answeringHand.length === 0) {
+        return
+      }
+
+      const bonusAck = await emitAck<{ ok: boolean; enabled?: boolean; error?: string }>(setup.host, 'toggle-double-points', {
+        actionId: 'bonus-toggle-1'
+      })
+      expect(bonusAck.ok).toBe(true)
+      expect(bonusAck.enabled).toBe(true)
+
+      const judgeViewPromise = waitForRoomUpdated(
+        judgeSocket,
+        (room) => room.gameState?.phase === 'waiting-for-judge' && room.gameState.submittedAnswers.length === 1
+      )
+
+      const submitAck = await emitAck<BoolAck>(answeringSocket, 'submit-answer', {
+        cardIds: [answeringHand[0].id]
+      })
+      expect(submitAck.ok).toBe(true)
+
+      const judgeView = await judgeViewPromise
+      const winnerAlias = judgeView.gameState?.submittedAnswers[0]?.playerId
+      expect(winnerAlias).toBeTruthy()
+      if (!winnerAlias) {
+        return
+      }
+
+      const roundOverPromise = waitForRoomUpdated(
+        judgeSocket,
+        (room) => room.gameState?.phase === 'round-over' && Boolean(room.gameState.winnerId)
+      )
+
+      const chooseAck = await emitAck<BoolAck>(judgeSocket, 'choose-winner', {
+        winnerId: winnerAlias
+      })
+      expect(chooseAck.ok).toBe(true)
+
+      const roundOverView = await roundOverPromise
+      const winnerGamePlayerId = roundOverView.gameState?.winnerId
+      const winnerScore = roundOverView.gameState?.players.find((player) => player.id === winnerGamePlayerId)?.score
+
+      expect(winnerScore).toBe(2)
+    } finally {
+      disconnectSockets(setup.host, setup.guest)
+    }
+  })
+
+  it('allows a player to trade up to three cards before submitting', async () => {
+    const setup = await setupTwoPlayerRoom()
+    try {
+      const hostInGame = setup.hostInGame
+      const guestInGame = setup.guestInGame
+
+      expect(hostInGame).toBeTruthy()
+      expect(guestInGame).toBeTruthy()
+      if (!hostInGame || !guestInGame || !hostInGame.gameState || !guestInGame.gameState) {
+        return
+      }
+
+      const hostPlayer = hostInGame.players.find((player) => player.id === setup.createAck.playerId)
+      const guestPlayer = guestInGame.players.find((player) => player.id === setup.joinAck.playerId)
+
+      expect(hostPlayer?.gamePlayerId).toBeTruthy()
+      expect(guestPlayer?.gamePlayerId).toBeTruthy()
+      if (!hostPlayer?.gamePlayerId || !guestPlayer?.gamePlayerId) {
+        return
+      }
+
+      const judgePlayerId = hostInGame.gameState.players[hostInGame.gameState.judgeIndex]?.id
+      const answeringPlayerId = hostInGame.gameState.answeringPlayerId
+      expect(judgePlayerId).toBeTruthy()
+      expect(answeringPlayerId).toBeTruthy()
+      if (!judgePlayerId || !answeringPlayerId) {
+        return
+      }
+
+      const answeringSocket = hostPlayer.gamePlayerId === answeringPlayerId ? setup.host : setup.guest
+      const answeringRoom = answeringSocket === setup.host ? hostInGame : guestInGame
+      const answeringHand = answeringRoom.gameState.players.find((player) => player.id === answeringPlayerId)?.hand
+
+      expect(answeringHand?.length).toBeGreaterThanOrEqual(3)
+      if (!answeringHand || answeringHand.length < 3) {
+        return
+      }
+
+      const tradeIds = answeringHand.slice(0, 3).map((card) => card.id)
+      const updatedRoomPromise = waitForRoomUpdated(
+        answeringSocket,
+        (room) => room.gameState?.players.find((player) => player.id === answeringPlayerId)?.hand.length === answeringHand.length
+      )
+      const tradeAck = await emitAck<BoolAck>(answeringSocket, 'trade-cards', {
+        cardIds: tradeIds,
+        actionId: 'trade-1'
+      })
+
+      expect(tradeAck.ok).toBe(true)
+
+      const updatedRoom = await updatedRoomPromise
+      const updatedHand = updatedRoom.gameState?.players.find((player) => player.id === answeringPlayerId)?.hand
+
+      expect(updatedHand).toHaveLength(answeringHand.length)
+      expect(updatedHand?.some((card) => tradeIds.includes(card.id))).toBe(false)
+    } finally {
+      disconnectSockets(setup.host, setup.guest)
+    }
+  })
 })

@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --port 5173 --strictPort",
     "server:dev": "tsx server/src/index.ts",
     "dev:all": "concurrently \"npm run dev\" \"npm run server:dev\"",
     "build": "tsc -b && vite build",

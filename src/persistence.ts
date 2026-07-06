@@ -40,7 +40,9 @@ export function loadPersistedState(): PersistedState {
         handSize: gameState.handSize ?? 7,
         maxRounds: gameState.maxRounds ?? 5,
         usedBlackCardIds: Array.isArray(gameState.usedBlackCardIds) ? gameState.usedBlackCardIds : [],
-        largeTableMode: gameState.largeTableMode ?? gameState.players.length >= 9
+        largeTableMode: gameState.largeTableMode ?? gameState.players.length >= 9,
+        tradedPlayerIds: Array.isArray(gameState.tradedPlayerIds) ? gameState.tradedPlayerIds : [],
+        doublePointsEnabled: gameState.doublePointsEnabled ?? false
       },
       playerNamesInput: parsed.playerNamesInput ?? ''
     }

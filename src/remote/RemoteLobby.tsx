@@ -24,7 +24,7 @@ function RemoteLobby() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [liveMessage, setLiveMessage] = useState('')
   const [pendingAction, setPendingAction] = useState<
-    'create' | 'join' | 'start' | 'submit' | 'choose' | 'advance' | 'end' | null
+    'create' | 'join' | 'start' | 'submit' | 'trade' | 'choose' | 'bonus' | 'advance' | 'end' | null
   >(null)
   const [createName, setCreateName] = useState('')
   const [joinName, setJoinName] = useState('')
@@ -32,6 +32,8 @@ function RemoteLobby() {
   const [currentRoom, setCurrentRoom] = useState<RoomSnapshot | null>(null)
   const [currentPlayerId, setCurrentPlayerId] = useState<string | null>(null)
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([])
+  const [selectedTradeCardIds, setSelectedTradeCardIds] = useState<string[]>([])
+  const [selectedWinnerId, setSelectedWinnerId] = useState<string | null>(null)
   const [showStartGuide, setShowStartGuide] = useState(false)
   const [phaseSpotlight, setPhaseSpotlight] = useState<{ title: string; detail: string } | null>(null)
   const [showRoomDetailsInGame, setShowRoomDetailsInGame] = useState(false)
@@ -43,6 +45,8 @@ function RemoteLobby() {
     setCurrentRoom(null)
     setCurrentPlayerId(null)
     setSelectedCardIds([])
+    setSelectedTradeCardIds([])
+    setSelectedWinnerId(null)
     window.localStorage.removeItem(SESSION_STORAGE_KEY)
 
     if (message) {
@@ -65,6 +69,14 @@ function RemoteLobby() {
 
     if (error === 'Invalid submission for current turn.') {
       return 'That submission is not valid for the current turn.'
+    }
+
+    if (error === 'Invalid card trade for current turn.') {
+      return 'You can trade up to 3 cards before submitting an answer.'
+    }
+
+    if (error === 'Only the host can toggle double points.') {
+      return 'Only the host can change round bonus scoring.'
     }
 
     return error
@@ -180,7 +192,9 @@ function RemoteLobby() {
   const isJoining = pendingAction === 'join'
   const isStarting = pendingAction === 'start'
   const isSubmitting = pendingAction === 'submit'
+  const isTrading = pendingAction === 'trade'
   const isChoosing = pendingAction === 'choose'
+  const isTogglingBonus = pendingAction === 'bonus'
   const isAdvancing = pendingAction === 'advance'
   const isEnding = pendingAction === 'end'
   const shouldShowRecoveryHint =
@@ -207,6 +221,8 @@ function RemoteLobby() {
 
   useEffect(() => {
     setSelectedCardIds([])
+    setSelectedTradeCardIds([])
+    setSelectedWinnerId(null)
   }, [gameState?.phase, gameState?.round])
 
   useEffect(() => {
@@ -412,21 +428,6 @@ function RemoteLobby() {
     })
   }
 
-  const chooseWinner = (winnerId: string) => {
-    if (!socket || pendingAction) {
-      return
-    }
-
-    setPendingAction('choose')
-    socket.emit('choose-winner', { winnerId, actionId: createActionId() }, (ack: { ok: boolean; error?: string }) => {
-      setPendingAction(null)
-
-      if (!ack.ok) {
-        handleActionError(ack.error, 'Could not choose winner.')
-      }
-    })
-  }
-
   const advanceRound = () => {
     if (!socket || pendingAction) {
       return
@@ -473,6 +474,87 @@ function RemoteLobby() {
 
       return [...current, cardId]
     })
+  }
+
+  const toggleTradeCard = (cardId: string) => {
+    setSelectedTradeCardIds((current) => {
+      if (current.includes(cardId)) {
+        return current.filter((id) => id !== cardId)
+      }
+
+      if (current.length >= 3) {
+        return current
+      }
+
+      return [...current, cardId]
+    })
+  }
+
+  const toggleWinnerSelection = (playerId: string) => {
+    setSelectedWinnerId((current) => (current === playerId ? null : playerId))
+  }
+
+  const tradeCards = () => {
+    if (!socket || selectedTradeCardIds.length === 0 || selectedTradeCardIds.length > 3 || pendingAction) {
+      return
+    }
+
+    setPendingAction('trade')
+    socket.emit(
+      'trade-cards',
+      { cardIds: selectedTradeCardIds, actionId: createActionId() },
+      (ack: { ok: boolean; error?: string }) => {
+        setPendingAction(null)
+
+        if (!ack.ok) {
+          handleActionError(ack.error, 'Could not trade cards.')
+          return
+        }
+
+        setSelectedTradeCardIds([])
+      }
+    )
+  }
+
+  const toggleDoublePoints = () => {
+    if (!socket || !playerInRoom?.isHost || pendingAction) {
+      return
+    }
+
+    setPendingAction('bonus')
+    socket.emit(
+      'toggle-double-points',
+      { actionId: createActionId() },
+      (ack: { ok: boolean; error?: string }) => {
+        setPendingAction(null)
+
+        if (!ack.ok) {
+          handleActionError(ack.error, 'Could not update bonus scoring.')
+        }
+      }
+    )
+  }
+
+  const confirmWinner = () => {
+    if (!socket || !selectedWinnerId || pendingAction) {
+      return
+    }
+
+    setPendingAction('choose')
+    socket.emit(
+      'choose-winner',
+      { winnerId: selectedWinnerId, actionId: createActionId() },
+      (ack: { ok: boolean; error?: string }) => {
+        setPendingAction(null)
+
+        if (!ack.ok) {
+          handleActionError(ack.error, 'Could not choose winner.')
+          return
+        }
+
+        setSelectedWinnerId(null)
+      }
+    )
   }
 
   return (
@@ -752,6 +834,35 @@ function RemoteLobby() {
                       >
                         {isSubmitting ? 'Submitting...' : `Submit ${requiredPick} card${requiredPick > 1 ? 's' : ''}`}
                       </button>
+                      <div className="trade-panel">
+                        <div className="trade-panel-heading">
+                          <div>
+                            <h4>Trade cards</h4>
+                            <p>Swap up to 3 white cards before you lock in your answer.</p>
+                          </div>
+                          <button
+                            type="button"
+                            className="secondary-action"
+                            onClick={tradeCards}
+                            disabled={selectedTradeCardIds.length === 0 || isTrading || Boolean(pendingAction && !isTrading)}
+                          >
+                            {isTrading ? 'Trading...' : `Trade ${selectedTradeCardIds.length || ''}`.trim()}
+                          </button>
+                        </div>
+                        <div className="answer-grid hand-grid trade-grid">
+                          {currentGamePlayer.hand.map((card) => (
+                            <button
+                              key={`trade-${card.id}`}
+                              type="button"
+                              className={`answer-card trade-card ${selectedTradeCardIds.includes(card.id) ? 'selected' : ''}`}
+                              onClick={() => toggleTradeCard(card.id)}
+                            >
+                              <span className="card-label">Trade card</span>
+                              {card.text}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     </>
                   ) : (
                     <p className="setup-warning">
@@ -774,11 +885,11 @@ function RemoteLobby() {
                       <button
                         key={`submission-${index + 1}-${entry.cards.map((card) => card.id).join('-')}`}
                         type="button"
-                        className="answer-card submission-card"
-                        onClick={() => chooseWinner(entry.playerId)}
+                        className={`answer-card submission-card ${selectedWinnerId === entry.playerId ? 'selected' : ''}`}
+                        onClick={() => isJudge && toggleWinnerSelection(entry.playerId)}
                         disabled={!isJudge || isChoosing || Boolean(pendingAction && !isChoosing)}
-                        title={isJudge ? `Pick Submission ${index + 1} as winner` : 'Only the judge can pick a winner'}
-                        aria-label={`Submission ${index + 1}${isJudge ? ', pick as winner' : ', waiting for judge'}`}
+                        title={isJudge ? `Select Submission ${index + 1}` : 'Only the judge can pick a winner'}
+                        aria-label={`Submission ${index + 1}${isJudge ? ', select to confirm' : ', waiting for judge'}`}
                         style={{ animationDelay: `${index * 60}ms` }}
                       >
                         <span className="card-label">Submission {index + 1}</span>
@@ -786,6 +897,16 @@ function RemoteLobby() {
                       </button>
                     ))}
                   </div>
+                  {isJudge ? (
+                    <button
+                      type="button"
+                      className="primary-action mobile-sticky-action"
+                      onClick={confirmWinner}
+                      disabled={!selectedWinnerId || isChoosing || Boolean(pendingAction && !isChoosing)}
+                    >
+                      {isChoosing ? 'Submitting winner...' : 'Confirm winner'}
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
 
@@ -818,6 +939,20 @@ function RemoteLobby() {
               ) : null}
 
               <div className="action-row">
+                {playerInRoom?.isHost && gameState.phase !== 'game-over' ? (
+                  <button
+                    type="button"
+                    className={`secondary-action ${gameState.doublePointsEnabled ? 'active' : ''}`}
+                    onClick={toggleDoublePoints}
+                    disabled={isTogglingBonus || Boolean(pendingAction && !isTogglingBonus)}
+                  >
+                    {isTogglingBonus
+                      ? 'Updating bonus...'
+                      : gameState.doublePointsEnabled
+                        ? 'Double points: On'
+                        : 'Double points: Off'}
+                  </button>
+                ) : null}
                 {playerInRoom?.isHost && gameState.phase !== 'game-over' ? (
                   <button
                     type="button"

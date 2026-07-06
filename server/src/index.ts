@@ -10,6 +10,7 @@ import {
   createInitialGameState,
   endGame,
   nextRound,
+  tradeCards,
   submitAnswer,
   type GameState
 } from '../../src/game'
@@ -509,6 +510,120 @@ io.on('connection', (socket) => {
     socket.data.roomCode = undefined
     socket.data.playerId = undefined
   })
+
+  socket.on(
+    'toggle-double-points',
+    (
+      payloadOrCallback:
+        | { actionId?: string }
+        | ((ack: { ok: true; enabled: boolean } | { ok: false; error: string }) => void),
+      maybeCallback?: (ack: { ok: true; enabled: boolean } | { ok: false; error: string }) => void
+    ) => {
+      const payload = typeof payloadOrCallback === 'function' ? {} : payloadOrCallback
+      const callback = typeof payloadOrCallback === 'function' ? payloadOrCallback : maybeCallback
+      if (!callback) {
+        return
+      }
+
+      const roomCode = socket.data.roomCode as string | undefined
+      const room = roomCode ? rooms.get(roomCode) : undefined
+
+      if (!room || room.phase !== 'in-game' || !room.gameState) {
+        callback({ ok: false, error: 'Game is not active.' })
+        return
+      }
+
+      const requester = room.players.get(socket.data.playerId as string | undefined ?? '')
+      if (!requester || !requester.connected || requester.socketId !== socket.id) {
+        callback({ ok: false, error: 'Session is no longer active.' })
+        return
+      }
+
+      const cachedAck = getCachedActionAck<{ ok: true; enabled: boolean } | { ok: false; error: string }>(
+        requester,
+        'toggle-double-points',
+        payload
+      )
+      if (cachedAck) {
+        callback(cachedAck)
+        return
+      }
+
+      if (!requester.isHost) {
+        const ack = { ok: false, error: 'Only the host can toggle double points.' } as const
+        cacheActionAck(requester, 'toggle-double-points', payload, ack)
+        callback(ack)
+        return
+      }
+
+      room.gameState = {
+        ...room.gameState,
+        doublePointsEnabled: !room.gameState.doublePointsEnabled
+      }
+      persistRooms()
+
+      const ack = { ok: true, enabled: room.gameState.doublePointsEnabled } as const
+      cacheActionAck(requester, 'toggle-double-points', payload, ack)
+      callback(ack)
+      broadcastRoom(room)
+    }
+  )
+
+  socket.on(
+    'trade-cards',
+    (
+      payload: { cardIds?: string[]; actionId?: string },
+      callback: (ack: { ok: true } | { ok: false; error: string }) => void
+    ) => {
+      const roomCode = socket.data.roomCode as string | undefined
+      const room = roomCode ? rooms.get(roomCode) : undefined
+
+      if (!room || room.phase !== 'in-game' || !room.gameState) {
+        callback({ ok: false, error: 'Game is not active.' })
+        return
+      }
+
+      const requester = room.players.get(socket.data.playerId as string | undefined ?? '')
+      if (!requester || !requester.connected || requester.socketId !== socket.id) {
+        callback({ ok: false, error: 'Session is no longer active.' })
+        return
+      }
+
+      const cachedAck = getCachedActionAck<{ ok: true } | { ok: false; error: string }>(
+        requester,
+        'trade-cards',
+        payload
+      )
+      if (cachedAck) {
+        callback(cachedAck)
+        return
+      }
+
+      if (!requester.gamePlayerId) {
+        const ack = { ok: false, error: 'Player not found in active game.' } as const
+        cacheActionAck(requester, 'trade-cards', payload, ack)
+        callback(ack)
+        return
+      }
+
+      const currentState = room.gameState
+      const nextState = tradeCards(currentState, requester.gamePlayerId, payload.cardIds ?? [])
+      if (nextState === currentState) {
+        const ack = { ok: false, error: 'Invalid card trade for current turn.' } as const
+        cacheActionAck(requester, 'trade-cards', payload, ack)
+        callback(ack)
+        return
+      }
+
+      room.gameState = nextState
+      persistRooms()
+
+      const ack = { ok: true } as const
+      cacheActionAck(requester, 'trade-cards', payload, ack)
+      callback(ack)
+      broadcastRoom(room)
+    }
+  )
 
   socket.on(
     'start-game',

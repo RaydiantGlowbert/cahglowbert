@@ -8,6 +8,7 @@ import {
   createInitialGameState,
   endGame,
   nextRound,
+  tradeCards,
   shuffleCards,
   submitAnswer,
   validateDecks
@@ -46,6 +47,47 @@ describe('game flow', () => {
     expect(advanced.round).toBe(2)
     expect(advanced.players[0].hand).toHaveLength(7)
     expect(advanced.players[1].hand).toHaveLength(7)
+  })
+
+  it('awards double points when the round bonus is enabled', () => {
+    const state = createInitialGameState(['Ada', 'Grace'])
+    const firstAnswer = submitAnswer(state, 'player-1', [state.players[0].hand[0].id])
+    const secondAnswer = submitAnswer(firstAnswer, 'player-2', [firstAnswer.players[1].hand[0].id])
+    const judged = chooseWinner(
+      {
+        ...secondAnswer,
+        doublePointsEnabled: true
+      },
+      'player-1'
+    )
+
+    expect(judged.players[0].score).toBe(2)
+  })
+
+  it('trades up to three white cards and keeps hands full', () => {
+    const state = createInitialGameState(['Ada', 'Grace', 'Linus'])
+    const tradeIds = state.players[1].hand.slice(0, 3).map((card) => card.id)
+    const traded = tradeCards(state, 'player-2', tradeIds)
+
+    expect(traded.tradedPlayerIds).toContain('player-2')
+    expect(traded.players[1].hand).toHaveLength(state.handSize)
+    expect(traded.players[1].hand.some((card) => tradeIds.includes(card.id))).toBe(false)
+  })
+
+  it('resets the round bonus when advancing to the next round', () => {
+    const state = createInitialGameState(['Ada', 'Grace'])
+    const firstAnswer = submitAnswer(state, 'player-1', [state.players[0].hand[0].id])
+    const secondAnswer = submitAnswer(firstAnswer, 'player-2', [firstAnswer.players[1].hand[0].id])
+    const judged = chooseWinner(
+      {
+        ...secondAnswer,
+        doublePointsEnabled: true
+      },
+      'player-1'
+    )
+    const advanced = nextRound(judged)
+
+    expect(advanced.doublePointsEnabled).toBe(false)
   })
 
   it('deals unique white cards across players', () => {
