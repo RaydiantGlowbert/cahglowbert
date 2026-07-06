@@ -222,22 +222,25 @@ function RemoteLobby() {
       }))
   }, [gameState])
 
-  const winningSubmissionText = useMemo(() => {
+  const winningSubmissionCards = useMemo(() => {
     if (!gameState || gameState.phase !== 'round-over' || !gameState.winnerId) {
-      return null
+      return [] as string[]
+    }
+
+    const directSubmission = gameState.submittedAnswers.find((entry) => entry.playerId === gameState.winnerId)
+    if (directSubmission && directSubmission.cards.length > 0) {
+      return directSubmission.cards.map((card) => card.text)
     }
 
     const latestRoundResult = [...gameState.roundHistory].reverse().find((entry) => entry.round === gameState.round)
     if (latestRoundResult?.winningCardText) {
       return latestRoundResult.winningCardText
+        .split(' / ')
+        .map((text) => text.trim())
+        .filter((text) => text.length > 0)
     }
 
-    const directSubmission = gameState.submittedAnswers.find((entry) => entry.playerId === gameState.winnerId)
-    if (!directSubmission) {
-      return null
-    }
-
-    return directSubmission.cards.map((card) => card.text).join(' / ')
+    return [] as string[]
   }, [gameState])
 
   const phaseChecklist = useMemo(() => {
@@ -1027,11 +1030,18 @@ function RemoteLobby() {
                 <div className="sidebar-card winner-card">
                   <h3>Round complete</h3>
                   <p className="winner-message">{gameState.players.find((player) => player.id === gameState.winnerId)?.name} wins this round.</p>
-                  {winningSubmissionText ? (
-                    <article className="winner-answer-preview" aria-live="polite">
-                      <span>Winning card</span>
-                      <strong>{winningSubmissionText}</strong>
-                    </article>
+                  {winningSubmissionCards.length > 0 ? (
+                    <section className="winner-answer-preview" aria-live="polite">
+                      <span>Winning card{winningSubmissionCards.length > 1 ? 's' : ''}</span>
+                      <div className="answer-grid hand-grid winner-answer-grid">
+                        {winningSubmissionCards.map((cardText, index) => (
+                          <article key={`${index}-${cardText}`} className="answer-card winner-answer-card" aria-label="Winning white card">
+                            <span className="card-label">White card</span>
+                            <strong>{cardText}</strong>
+                          </article>
+                        ))}
+                      </div>
+                    </section>
                   ) : null}
                   <button
                     type="button"
