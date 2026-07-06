@@ -222,6 +222,24 @@ function RemoteLobby() {
       }))
   }, [gameState])
 
+  const winningSubmissionText = useMemo(() => {
+    if (!gameState || gameState.phase !== 'round-over' || !gameState.winnerId) {
+      return null
+    }
+
+    const latestRoundResult = [...gameState.roundHistory].reverse().find((entry) => entry.round === gameState.round)
+    if (latestRoundResult?.winningCardText) {
+      return latestRoundResult.winningCardText
+    }
+
+    const directSubmission = gameState.submittedAnswers.find((entry) => entry.playerId === gameState.winnerId)
+    if (!directSubmission) {
+      return null
+    }
+
+    return directSubmission.cards.map((card) => card.text).join(' / ')
+  }, [gameState])
+
   const phaseChecklist = useMemo(() => {
     if (!gameState) {
       return null
@@ -1009,6 +1027,12 @@ function RemoteLobby() {
                 <div className="sidebar-card winner-card">
                   <h3>Round complete</h3>
                   <p className="winner-message">{gameState.players.find((player) => player.id === gameState.winnerId)?.name} wins this round.</p>
+                  {winningSubmissionText ? (
+                    <article className="winner-answer-preview" aria-live="polite">
+                      <span>Winning card</span>
+                      <strong>{winningSubmissionText}</strong>
+                    </article>
+                  ) : null}
                   <button
                     type="button"
                     className="primary-action mobile-sticky-action"
