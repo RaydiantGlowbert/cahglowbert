@@ -222,6 +222,64 @@ function RemoteLobby() {
       }))
   }, [gameState])
 
+  const phaseChecklist = useMemo(() => {
+    if (!gameState) {
+      return null
+    }
+
+    if (gameState.phase === 'waiting-for-answers' && canSubmitThisRound) {
+      return {
+        role: 'player' as const,
+        title: 'Round checklist',
+        steps: [
+          {
+            label: `Select ${requiredPick} answer card${requiredPick > 1 ? 's' : ''}`,
+            done: selectedCardIds.length === requiredPick
+          },
+          {
+            label: hasTradedThisRound
+              ? 'Trade option used (optional, once per round)'
+              : `Optional trade selected (${selectedTradeCardIds.length}/3)`,
+            done: hasTradedThisRound
+          },
+          {
+            label: 'Submit your answer',
+            done: hasSubmittedThisRound
+          }
+        ]
+      }
+    }
+
+    if (gameState.phase === 'waiting-for-judge' && isJudge) {
+      return {
+        role: 'judge' as const,
+        title: 'Judge checklist',
+        steps: [
+          {
+            label: 'Select the winning submission',
+            done: Boolean(selectedWinnerId)
+          },
+          {
+            label: 'Click Confirm winner',
+            done: false
+          }
+        ]
+      }
+    }
+
+    return null
+  }, [
+    canSubmitThisRound,
+    gameState,
+    hasSubmittedThisRound,
+    hasTradedThisRound,
+    isJudge,
+    requiredPick,
+    selectedCardIds.length,
+    selectedTradeCardIds.length,
+    selectedWinnerId
+  ])
+
   useEffect(() => {
     setSelectedCardIds([])
     setSelectedTradeCardIds([])
@@ -794,6 +852,20 @@ function RemoteLobby() {
                 <strong>{gameState.blackCard?.text}</strong>
                 <p>Pick {requiredPick} white card{requiredPick > 1 ? 's' : ''}.</p>
               </article>
+
+              {phaseChecklist ? (
+                <section className={`checklist-card checklist-${phaseChecklist.role}`} aria-live="polite">
+                  <h3>{phaseChecklist.title}</h3>
+                  <ul>
+                    {phaseChecklist.steps.map((step) => (
+                      <li key={step.label} className={step.done ? 'done' : ''}>
+                        <span className="checklist-state">{step.done ? 'Done' : 'Next'}</span>
+                        <span>{step.label}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ) : null}
 
               <div className="sidebar-card">
                 <h3>Scores</h3>
