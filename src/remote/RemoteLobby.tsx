@@ -185,6 +185,9 @@ function RemoteLobby() {
       gameState.submittedAnswers.some((entry) => entry.playerId === playerInRoom.gamePlayerId)
   )
   const canSubmitThisRound = Boolean(gameState && playerInRoom?.gamePlayerId && !isJudge && !hasSubmittedThisRound)
+  const hasTradedThisRound = Boolean(
+    gameState && playerInRoom?.gamePlayerId && gameState.tradedPlayerIds.includes(playerInRoom.gamePlayerId)
+  )
   const canAdvanceRound = Boolean(playerInRoom?.isHost)
   const connectedPlayersCount = currentRoom?.players.filter((player) => player.connected).length ?? 0
   const disconnectedPlayersCount = currentRoom?.players.filter((player) => !player.connected).length ?? 0
@@ -813,6 +816,7 @@ function RemoteLobby() {
                   <h3>{canSubmitThisRound ? 'Submit your answer' : 'Waiting for answers'}</h3>
                   {canSubmitThisRound && currentGamePlayer ? (
                     <>
+                      <p className="setup-warning">Step 1: select your answer card{requiredPick > 1 ? 's' : ''}. Step 2: submit.</p>
                       <div className="answer-grid hand-grid">
                         {currentGamePlayer.hand.map((card) => (
                           <button
@@ -838,15 +842,27 @@ function RemoteLobby() {
                         <div className="trade-panel-heading">
                           <div>
                             <h4>Trade cards</h4>
-                            <p>Swap up to 3 white cards before you lock in your answer.</p>
+                            <p>
+                              Swap up to 3 white cards before you lock in your answer.
+                              {hasTradedThisRound ? ' Trade used this round.' : ' One trade action per round.'}
+                            </p>
                           </div>
                           <button
                             type="button"
                             className="secondary-action"
                             onClick={tradeCards}
-                            disabled={selectedTradeCardIds.length === 0 || isTrading || Boolean(pendingAction && !isTrading)}
+                            disabled={
+                              hasTradedThisRound ||
+                              selectedTradeCardIds.length === 0 ||
+                              isTrading ||
+                              Boolean(pendingAction && !isTrading)
+                            }
                           >
-                            {isTrading ? 'Trading...' : `Trade ${selectedTradeCardIds.length || ''}`.trim()}
+                            {isTrading
+                              ? 'Trading...'
+                              : hasTradedThisRound
+                                ? 'Trade used'
+                                : `Trade ${selectedTradeCardIds.length || ''}`.trim()}
                           </button>
                         </div>
                         <div className="answer-grid hand-grid trade-grid">
@@ -879,7 +895,11 @@ function RemoteLobby() {
               {gameState.phase === 'waiting-for-judge' ? (
                 <div className="sidebar-card">
                   <h3>{isJudge ? 'Pick the winning answer' : 'Judge is deciding'}</h3>
-                  <p className="setup-warning">Submissions are shuffled and anonymized each round.</p>
+                  <p className="setup-warning">
+                    {isJudge
+                      ? 'Step 1: select a submission. Step 2: click Confirm winner.'
+                      : 'Submissions are shuffled and anonymized each round.'}
+                  </p>
                   <div className="answer-grid">
                     {gameState.submittedAnswers.map((entry, index) => (
                       <button
@@ -898,14 +918,17 @@ function RemoteLobby() {
                     ))}
                   </div>
                   {isJudge ? (
-                    <button
-                      type="button"
-                      className="primary-action mobile-sticky-action"
-                      onClick={confirmWinner}
-                      disabled={!selectedWinnerId || isChoosing || Boolean(pendingAction && !isChoosing)}
-                    >
-                      {isChoosing ? 'Submitting winner...' : 'Confirm winner'}
-                    </button>
+                    <>
+                      {selectedWinnerId ? <p className="setup-warning">Selection ready. Click Confirm winner to lock it in.</p> : null}
+                      <button
+                        type="button"
+                        className="primary-action mobile-sticky-action"
+                        onClick={confirmWinner}
+                        disabled={!selectedWinnerId || isChoosing || Boolean(pendingAction && !isChoosing)}
+                      >
+                        {isChoosing ? 'Submitting winner...' : 'Confirm winner'}
+                      </button>
+                    </>
                   ) : null}
                 </div>
               ) : null}
