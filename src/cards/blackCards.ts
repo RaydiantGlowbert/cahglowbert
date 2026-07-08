@@ -40,5 +40,13 @@ export const blackCards = [
   { id: "black-039", text: "My villain origin story began with ______.", type: 'black' as const, pick: 1 },
   { id: "black-040", text: "My toxic trait is thinking ______.", type: 'black' as const, pick: 1 },
   { id: "black-041", text: "The real reason I need PTO is ______.", type: 'black' as const, pick: 1 },
-  { id: "black-042", text: "The quickest way to become a Team Raydiant legend is ______.", type: 'black' as const, pick: 1 }
+  { id: "black-042", text: "The quickest way to become a Team Raydiant legend is ______.", type: 'black' as const, pick: 1 },
+  { id: "black-043", text: "If Glowbert had one thing to say about me it would be ______.", type: 'black' as const, pick: 1 },
+  { id: "black-044", text: "My manager just pinged me on Teams because ______.", type: 'black' as const, pick: 1 },
+  { id: "black-045", text: "My student did not submit their task because ______.", type: 'black' as const, pick: 1 },
+  { id: "black-046", text: "Glowbert's biggest pet peeve is ______.", type: 'black' as const, pick: 1 },
+  { id: "black-047", text: "______ is the reason the course instructor is mad.", type: 'black' as const, pick: 1 },
+  { id: "black-048", text: "______ is the reason the project failed.", type: 'black' as const, pick: 1 },
+  { id: "black-049", text: "Netflix made a documentary about ______.", type: 'black' as const, pick: 1 },
+  { id: "black-050", text: "People say politics is the biggest problem in the world today, but it is really ______.", type: 'black' as const, pick: 1 }
 ]
