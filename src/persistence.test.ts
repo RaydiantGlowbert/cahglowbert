@@ -20,4 +20,21 @@ describe('persistence', () => {
     expect(restored.gameState?.players[0].name).toBe('Ada')
     expect(restored.playerNamesInput).toBe('Ada, Grace')
   })
+
+  it('backfills used white card ids for older saved states', () => {
+    const legacyState = createInitialGameState(['Ada', 'Grace'])
+    const payload = {
+      gameState: {
+        ...legacyState,
+        usedWhiteCardIds: undefined
+      },
+      playerNamesInput: 'Ada, Grace'
+    }
+
+    window.localStorage.setItem('cah-local-game', JSON.stringify(payload))
+
+    const restored = loadPersistedState()
+
+    expect(restored.gameState?.usedWhiteCardIds).toEqual([])
+  })
 })

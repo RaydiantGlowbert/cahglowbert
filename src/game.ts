@@ -40,6 +40,7 @@ export type GameState = {
   judgeIndex: number
   blackCard: Card | null
   usedBlackCardIds: string[]
+  usedWhiteCardIds: string[]
   round: number
   phase: 'waiting-for-answers' | 'waiting-for-judge' | 'round-over' | 'game-over'
   submittedAnswers: Array<{ playerId: string; cards: Card[] }>
@@ -177,8 +178,11 @@ function drawUniqueWhiteCards(
   return availableCards.slice(0, count)
 }
 
-function refillHands(players: Player[], deck: Card[], handSize: number): Player[] {
-  const usedCardIds = new Set(players.flatMap((player) => player.hand.map((card) => card.id)))
+function refillHands(players: Player[], deck: Card[], handSize: number, excludedCardIds: string[] = []): Player[] {
+  const usedCardIds = new Set([
+    ...excludedCardIds,
+    ...players.flatMap((player) => player.hand.map((card) => card.id))
+  ])
 
   return players.map((player) => {
     const cardsNeeded = Math.max(0, handSize - player.hand.length)
@@ -241,6 +245,7 @@ export function createInitialGameState(names: string[]): GameState {
     judgeIndex,
     blackCard,
     usedBlackCardIds,
+    usedWhiteCardIds: [],
     round: 1,
     phase: 'waiting-for-answers',
     submittedAnswers: [],
@@ -284,10 +289,13 @@ export function submitAnswer(state: GameState, playerId: string, cardIds: string
 
   const nextSubmittedAnswers = [...state.submittedAnswers, { playerId, cards: selectedCards }]
   const allPlayersAnswered = nextSubmittedAnswers.length >= state.players.length - 1
+  const retiredWhiteCardIds = state.usedWhiteCardIds ?? []
+  const nextUsedWhiteCardIds = [...new Set([...retiredWhiteCardIds, ...selectedCards.map((card) => card.id)])]
 
   return {
     ...state,
     players: updatedPlayers,
+    usedWhiteCardIds: nextUsedWhiteCardIds,
     submittedAnswers: nextSubmittedAnswers,
     phase: allPlayersAnswered ? 'waiting-for-judge' : 'waiting-for-answers',
     answeringPlayerId: allPlayersAnswered
@@ -325,7 +333,7 @@ export function tradeCards(state: GameState, playerId: string, cardIds: string[]
       : entry
   )
 
-  const refilledPlayers = refillHands(updatedPlayers, initialWhiteCards, state.handSize)
+  const refilledPlayers = refillHands(updatedPlayers, initialWhiteCards, state.handSize, state.usedWhiteCardIds ?? [])
 
   return {
     ...state,
@@ -384,7 +392,8 @@ export function endGame(state: GameState): GameState {
 export function nextRound(state: GameState): GameState {
   const nextRoundNumber = state.round + 1
   const nextJudgeIndex = (state.judgeIndex + 1) % state.players.length
-  const replenishedPlayers = refillHands(state.players, initialWhiteCards, state.handSize)
+  const retiredWhiteCardIds = state.usedWhiteCardIds ?? []
+  const replenishedPlayers = refillHands(state.players, initialWhiteCards, state.handSize, retiredWhiteCardIds)
   const { blackCard: nextBlackCard, usedBlackCardIds } = drawNextBlackCard(state.usedBlackCardIds)
 
   return {
@@ -393,6 +402,7 @@ export function nextRound(state: GameState): GameState {
     judgeIndex: nextJudgeIndex,
     blackCard: nextBlackCard,
     usedBlackCardIds,
+    usedWhiteCardIds: retiredWhiteCardIds,
     round: nextRoundNumber,
     phase: 'waiting-for-answers',
     submittedAnswers: [],

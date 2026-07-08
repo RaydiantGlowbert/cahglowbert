@@ -74,6 +74,19 @@ describe('game flow', () => {
     expect(traded.players[1].hand.some((card) => tradeIds.includes(card.id))).toBe(false)
   })
 
+  it('removes played white cards from future circulation', () => {
+    const state = createInitialGameState(['Ada', 'Grace'])
+    const playedCardId = state.players[1].hand[0].id
+    const afterSubmit = submitAnswer(state, 'player-2', [playedCardId])
+    const judged = chooseWinner(afterSubmit, 'player-2')
+    const advanced = nextRound(judged)
+
+    const allHands = advanced.players.flatMap((player) => player.hand.map((card) => card.id))
+
+    expect(advanced.usedWhiteCardIds).toContain(playedCardId)
+    expect(allHands).not.toContain(playedCardId)
+  })
+
   it('resets the round bonus when advancing to the next round', () => {
     const state = createInitialGameState(['Ada', 'Grace'])
     const firstAnswer = submitAnswer(state, 'player-1', [state.players[0].hand[0].id])
