@@ -412,7 +412,36 @@ io.on('connection', (socket) => {
       }
 
       if (room.phase !== 'lobby') {
-        callback({ ok: false, error: 'Game already in progress.' })
+        const reconnectingPlayer = [...room.players.values()].find(
+          (player) => !player.connected && player.name.toLowerCase() === playerName.toLowerCase()
+        )
+
+        if (!reconnectingPlayer) {
+          callback({ ok: false, error: 'Game already in progress.' })
+          return
+        }
+
+        leaveCurrentRoom(socket.id, socket.data.roomCode, true)
+
+        reconnectingPlayer.socketId = socket.id
+        reconnectingPlayer.connected = true
+        reconnectingPlayer.sessionToken = randomUUID()
+        reconnectingPlayer.actionAckCache = new Map()
+        room.players.set(reconnectingPlayer.id, reconnectingPlayer)
+        persistRooms()
+
+        socket.data.roomCode = roomCode
+        socket.data.playerId = reconnectingPlayer.id
+        void socket.join(roomCode)
+
+        const snapshot = toRoomSnapshotForPlayer(room, reconnectingPlayer)
+        callback({
+          ok: true,
+          room: snapshot,
+          playerId: reconnectingPlayer.id,
+          sessionToken: reconnectingPlayer.sessionToken
+        })
+        broadcastRoom(room)
         return
       }
 

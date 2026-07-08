@@ -575,6 +575,38 @@ describe('remote multiplayer server integration', () => {
     }
   })
 
+  it('allows disconnected in-game players to reclaim their slot with room code and same name', async () => {
+    const setup = await setupTwoPlayerRoom()
+    const replacementGuest = await connectClient()
+
+    try {
+      const disconnectedGuestSeenByHost = waitForRoomUpdated(setup.host, (room) => {
+        const guest = room.players.find((player) => player.id === setup.joinAck.playerId)
+        return room.phase === 'in-game' && Boolean(guest && !guest.connected)
+      })
+
+      setup.guest.disconnect()
+      await disconnectedGuestSeenByHost
+
+      const rejoinAck = await emitAck<SocketAck>(replacementGuest, 'join-room', {
+        roomCode: setup.createAck.room.roomCode,
+        playerName: 'Guest'
+      })
+
+      expect(rejoinAck.ok).toBe(true)
+      if (!rejoinAck.ok) {
+        return
+      }
+
+      expect(rejoinAck.playerId).toBe(setup.joinAck.playerId)
+      expect(rejoinAck.room.phase).toBe('in-game')
+      const rejoinedPlayer = rejoinAck.room.players.find((player) => player.id === setup.joinAck.playerId)
+      expect(rejoinedPlayer?.connected).toBe(true)
+    } finally {
+      disconnectSockets(setup.host, replacementGuest)
+    }
+  })
+
   it('rejects rejoin when using a session token from a different room', async () => {
     const sockets: Socket[] = []
 
