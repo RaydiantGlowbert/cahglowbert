@@ -773,6 +773,14 @@ button:focus-visible,
   cursor: default;
 }
 
+.winner-answer-card .card-label {
+  color: #475569;
+}
+
+.winner-answer-card strong {
+  color: #111827;
+}
+
 .winner-answer-card:hover {
   transform: none;
   box-shadow: 0 14px 28px rgba(2, 6, 23, 0.22);
